@@ -309,8 +309,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
         except UnsafePathError:
             if (root / rel).is_file() and rel not in read_only:
                 read_only.append(rel)  # protected: show it, but read-only
+    from dante import codemap
+    map_text = codemap.context(root, task)
     result = run_task(task, test, ws, llm, s, audit, context_files=context, read_only_files=read_only,
-                      lessons_path=LESSONS_FILE)
+                      lessons_path=LESSONS_FILE, map_text=map_text)
 
     status = "SUCCESS" if result.success else "FAILED"
     print(f"{status} after {result.attempts} attempt(s). Files: {', '.join(result.files) or '-'}")
@@ -400,6 +402,10 @@ def build_parser() -> argparse.ArgumentParser:
     le.add_argument("--rule", required=True, help="the rule that prevents it / правило, що це запобігає")
     le.add_argument("--tag", action="append", default=[], help="topic word, repeatable (e.g. json, gui, always)")
     le.set_defaults(func=_cmd_lesson)
+    upd = sub.add_parser("update", help="update DANTE from GitHub releases / оновити Данте з GitHub")
+    upd.add_argument("action", nargs="?", default="check", choices=["check", "install", "rollback", "auto-on", "auto-off"])
+    upd.add_argument("--app-dir", default=None)
+    upd.set_defaults(func=_cmd_update)
     sub.add_parser("lessons", help="show what DANTE has learned / що Данте вже вивчив").set_defaults(func=_cmd_lessons)
 
     r = sub.add_parser("run", help="do one task in a project")
@@ -449,6 +455,38 @@ def _cmd_lesson(args) -> int:
         print(f"Урок не збережено / lesson not saved: {e}")
         return 2
     print(f"{x['id']} (×{x['seen']}) [{', '.join(x['tags'])}]: {x['rule']}")
+    return 0
+
+
+def _cmd_update(args) -> int:
+    """Update from GitHub releases (check, install, rollback, auto on/off).
+    Оновлення з релізів GitHub (перевірити, встановити, відкат, авто так/ні)."""
+    from pathlib import Path as _P
+    import dante as D
+    from dante import updater as U
+    app = _P(args.app_dir) if args.app_dir else _P(D.__file__).resolve().parent.parent
+    pol_path = app / "update.json"
+    if args.action in ("auto-on", "auto-off"):
+        pol = U.load_policy(pol_path)
+        pol["auto_install"] = args.action == "auto-on"
+        U.save_policy(pol_path, pol)
+        print("Автовстановлення оновлень / auto install: " + ("увімкнено / on" if pol["auto_install"] else "вимкнено / off"))
+        return 0
+    if args.action == "rollback":
+        root = app / "update-backup"
+        dirs = sorted(d for d in root.iterdir() if d.is_dir()) if root.exists() else []
+        if not dirs:
+            print("Немає резервної копії / no backup")
+            return 1
+        print(f"Повернуто файлів / files restored: {U.rollback(app, dirs[-1])}")
+        return 0
+    res = U.run_update(app, D.__build__, install_now=args.action == "install")
+    notes = {"up-to-date": "у вас найновіша версія", "offline": "немає зв'язку з GitHub",
+             "bad-checksum": "файл пошкоджений або підмінений — нічого не встановлено"}
+    head = res.split()[0]
+    extra = notes.get(head) or ("є нова версія — встановити: python -m dante update install" if head == "available"
+                                else "встановлено; відкат: python -m dante update rollback")
+    print(f"{res}  ({extra})")
     return 0
 
 

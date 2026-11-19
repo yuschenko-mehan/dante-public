@@ -3,9 +3,10 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
+use std::path::Path;
 use std::time::Duration;
 
-use crate::protocol::{AntMessage, CoordMessage, hex_encode};
+use crate::protocol::{AntMessage, CoordMessage, hex_decode, hex_encode};
 use crate::worker::run_command_code;
 
 /// Maximum backoff duration for ant reconnection.
@@ -88,9 +89,9 @@ pub fn generate_ant_id() -> String {
     format!("{}-{:06x}", hostname, nanos % 0x1000000)
 }
 
-/// Perform a single exchange session with the coordinator with specified timeout: connect, HELLO, loop asking for tasks/waiting.
-/// Виконати один сеанс обміну з координатором із зазначеним таймаутом: підключення, HELLO, цикл запиту завдань / очікування.
-pub fn run_session_timeout(coordinator_addr: &str, ant_id: &str, once: bool, io_timeout: Duration) -> std::io::Result<()> {
+/// Perform a single exchange session with the coordinator with snapshot support and specified timeout.
+/// Виконати один сеанс обміну з координатором із підтримкою знімків та зазначеним таймаутом.
+pub fn run_session_snap(coordinator_addr: &str, ant_id: &str, once: bool, io_timeout: Duration, snap_dir: Option<&Path>) -> std::io::Result<()> {
     // Connect to coordinator / Підключитися до координатора
     let stream = TcpStream::connect(coordinator_addr)?;
     stream.set_nodelay(true)?;
@@ -102,11 +103,18 @@ pub fn run_session_timeout(coordinator_addr: &str, ant_id: &str, once: bool, io_
         .map(|n| n.get())
         .unwrap_or(1);
 
+    // Determine version based on snapshot directory presence / Визначити версію на основі наявності каталогу знімків
+    let version = if snap_dir.is_some() {
+        "0.3.0"
+    } else {
+        "0.1.0"
+    };
+
     // Send HELLO message / Надіслати повідомлення HELLO
     let hello = AntMessage::Hello {
         id: ant_id.to_string(),
         cpus,
-        version: "0.1.0".to_string(),
+        version: version.to_string(),
     };
     write_stream.write_all(format!("{}\n", hello.to_line()).as_bytes())?;
 
@@ -159,6 +167,14 @@ pub fn run_session_timeout(coordinator_addr: &str, ant_id: &str, once: bool, io_
                     break;
                 }
             }
+            CoordMessage::Snap { data } => {
+                if let Some(dir) = snap_dir {
+                    if let Ok(bytes) = hex_decode(&data) {
+                        let _ = crate::survive::store(dir, &bytes, 5);
+                    }
+                }
+                // After SNAP the ant just asks again / Після SNAP мураха просто питає знову
+            }
             CoordMessage::Bye => {
                 break;
             }
@@ -166,6 +182,12 @@ pub fn run_session_timeout(coordinator_addr: &str, ant_id: &str, once: bool, io_
     }
 
     Ok(())
+}
+
+/// Perform a single exchange session with the coordinator with specified timeout: connect, HELLO, loop asking for tasks/waiting.
+/// Виконати один сеанс обміну з координатором із зазначеним таймаутом: підключення, HELLO, цикл запиту завдань / очікування.
+pub fn run_session_timeout(coordinator_addr: &str, ant_id: &str, once: bool, io_timeout: Duration) -> std::io::Result<()> {
+    run_session_snap(coordinator_addr, ant_id, once, io_timeout, None)
 }
 
 /// Perform a single exchange session with the coordinator using default IO_TIMEOUT.
@@ -219,4 +241,3 @@ mod tests {
         assert!(!id2.is_empty());
     }
 }
-

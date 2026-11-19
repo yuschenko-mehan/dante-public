@@ -73,6 +73,9 @@ pub enum CoordMessage {
     Wait {
         seconds: u64,
     },
+    Snap {
+        data: String,
+    },
     Bye,
 }
 
@@ -158,6 +161,9 @@ impl CoordMessage {
             CoordMessage::Wait { seconds } => {
                 format!("WAIT\t{}", seconds)
             }
+            CoordMessage::Snap { data } => {
+                format!("SNAP\t{}", data)
+            }
             CoordMessage::Bye => {
                 "BYE".to_string()
             }
@@ -190,6 +196,14 @@ impl CoordMessage {
                 }
                 let seconds = parts[1].parse().map_err(|_| "Invalid seconds / Недійсні секунди")?;
                 Ok(CoordMessage::Wait { seconds })
+            }
+            "SNAP" => {
+                if parts.len() != 2 {
+                    return Err("Invalid SNAP fields count / Невірна кількість полів SNAP");
+                }
+                Ok(CoordMessage::Snap {
+                    data: parts[1].to_string(),
+                })
             }
             "BYE" => {
                 if parts.len() != 1 {
@@ -278,6 +292,12 @@ mod tests {
         assert_eq!(line, "WAIT\t5");
         let parsed = CoordMessage::parse(&line).unwrap();
         assert_eq!(parsed, wait);
+
+        let snap = CoordMessage::Snap { data: "1234".to_string() };
+        let line = snap.to_line();
+        assert_eq!(line, "SNAP\t1234");
+        let parsed = CoordMessage::parse(&line).unwrap();
+        assert_eq!(parsed, snap);
 
         let bye = CoordMessage::Bye;
         let line = bye.to_line();

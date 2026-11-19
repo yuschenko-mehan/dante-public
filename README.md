@@ -25,6 +25,7 @@ python -m dante gui        # DANTE window
 python -m dante selftest   # self-test
 ```
 
+🛠 **Install on a PC and updates:** [docs/INSTALL.md](docs/INSTALL.md)
 📘 **How to add a new AI model:** [docs/MODELS.md](docs/MODELS.md)
 
 ## Support the project

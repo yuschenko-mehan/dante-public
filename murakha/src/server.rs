@@ -37,6 +37,9 @@ struct TaskQueueInner {
     ants: HashMap<String, InstantPlaceholder>, // ant_id -> placeholder
     active_tasks: HashMap<String, (String, Task)>, // ant_id -> (task_id, task)
     next_id: usize,
+    swarm: String,
+    ant_port: u16,
+    order: Vec<(String, String)>,
 }
 
 /// Placeholder struct for ant tracking.
@@ -68,6 +71,17 @@ impl TaskQueue {
 
     /// Return number of pending tasks.
     /// Повернути кількість очікуючих завдань.
+    pub fn set_swarm(&self, swarm: &str) { self.inner.lock().unwrap().swarm = swarm.to_string(); }
+    pub fn set_ant_port(&self, port: u16) { self.inner.lock().unwrap().ant_port = port; }
+    pub fn snapshot_for(&self, coord_addr: &str) -> crate::heal::Snapshot {
+        let inner = self.inner.lock().unwrap();
+        let mut peers = vec![("coord".to_string(), coord_addr.to_string())];
+        for (id, ip) in &inner.order { peers.push((id.clone(), format!("{}:{}", ip, inner.ant_port))); }
+        let mut tasks: Vec<String> = inner.tasks.iter().map(|t| t.command.clone()).collect();
+        for (_, (_, t)) in &inner.active_tasks { tasks.push(t.command.clone()); }
+        crate::heal::Snapshot { swarm: inner.swarm.clone(), peers, tasks }
+    }
+
     pub fn pending(&self) -> usize {
         let inner = self.inner.lock().unwrap();
         inner.tasks.len()
@@ -109,6 +123,9 @@ impl Server {
                 ants: HashMap::new(),
                 active_tasks: HashMap::new(),
                 next_id: 0,
+                swarm: "dante".to_string(),
+                ant_port: 47901,
+                order: Vec::new(),
             })),
         };
         Ok(Server { listener, queue })
@@ -153,7 +170,18 @@ impl Server {
 
 /// Handle an individual ant connection session.
 /// Обробити окрему сесію з'єднання з мурахою.
+pub fn wants_snapshots(version: &str) -> bool {
+    let mut it = version.split('.');
+    let major = it.next().and_then(|x| x.parse::<u64>().ok());
+    let minor = it.next().and_then(|x| x.parse::<u64>().ok());
+    match (major, minor) { (Some(a), Some(b)) => (a, b) >= (0, 3), _ => false }
+}
+
 fn handle_connection(stream: TcpStream, queue: TaskQueue) -> io::Result<()> {
+    let local = stream.local_addr()?.to_string();
+    let peer_ip = stream.peer_addr()?.ip().to_string();
+    let mut snaps = false;
+    let mut asks: u64 = 0;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
 
@@ -180,19 +208,28 @@ fn handle_connection(stream: TcpStream, queue: TaskQueue) -> io::Result<()> {
                     continue;
                 }
                 match AntMessage::parse(line_str) {
-                    Ok(AntMessage::Hello { id, .. }) => {
+                    Ok(AntMessage::Hello { id, version, .. }) => {
                         current_ant_id = Some(id.clone());
+                        snaps = wants_snapshots(&version);
                         let mut inner = queue.inner.lock().unwrap();
+                        if !inner.order.iter().any(|(i, _)| i == &id) { inner.order.push((id.clone(), peer_ip.clone())); }
                         inner.ants.insert(id, InstantPlaceholder {});
                     }
                     Ok(AntMessage::Ask { id }) => {
                         if current_ant_id.is_none() {
                             current_ant_id = Some(id.clone());
                         }
+                        asks += 1;
+                        if snaps && asks % 20 == 1 {
+                            let snap = crate::heal::encode(&queue.snapshot_for(&local));
+                            let msg = CoordMessage::Snap { data: crate::protocol::hex_encode(&snap) };
+                            let _ = writeln!(writer, "{}", msg.to_line());
+                            continue;
+                        }
                         let mut inner = queue.inner.lock().unwrap();
                         inner.ants.entry(id.clone()).or_insert(InstantPlaceholder {});
 
-                        if let Some(task) = inner.tasks.pop() {
+                        if let Some(task) = if inner.tasks.is_empty() { None } else { Some(inner.tasks.remove(0)) } {
                             let task_id = task.id.clone();
                             let timeout_s = task.timeout_s;
                             let command = task.command.clone();

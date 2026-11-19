@@ -445,6 +445,50 @@ class DanteWindow:
             handler = (lambda f: (lambda e: (f(), "break")[1]))(fn)
             root.bind(seq, handler)
             self.task.bind(seq, handler)  # widget binding first, so the text box does not act on these keys
+        self._bind_any_layout(root, {"plan": lambda: self.start("plan"), "tests": self.run_tests,
+                                     "models": self.open_models, "github": self.open_github})
+
+    def _bind_any_layout(self, root, actions: dict) -> None:
+        """Copy/paste/cut/select-all and window keys by PHYSICAL key, so they work in the Ukrainian layout too;
+        plus a right-click menu in every text field.
+        Копіювати/вставити/вирізати/виділити все і клавіші вікна за ФІЗИЧНОЮ клавішею — працюють і в українській
+        розкладці; плюс меню правої кнопки в кожному текстовому полі."""
+        def edit_key(e):
+            ev = L.edit_event(e.keycode, e.keysym)
+            if ev:
+                e.widget.event_generate(ev)
+                return "break"
+            act = L.window_action(e.keycode, e.keysym)
+            if act and act in actions:
+                actions[act]()
+                return "break"
+            return None
+
+        def menu(e):
+            w = e.widget
+            try:
+                w.focus_set()
+            except Exception:
+                pass
+            m = self.tk.Menu(root, tearoff=0)
+            for label, ev in L.context_menu(self.lang):
+                m.add_command(label=label, command=lambda ev=ev, w=w: w.event_generate(ev))
+            try:
+                m.tk_popup(e.x_root, e.y_root)
+            finally:
+                m.grab_release()
+
+        for cls in ("Text", "Entry", "TEntry", "TCombobox"):
+            root.bind_class(cls, "<Control-KeyPress>", edit_key, add="+")
+            root.bind_class(cls, "<Button-3>", menu, add="+")
+
+        def window_key(e):
+            act = L.window_action(e.keycode, e.keysym)
+            if act and act in actions:
+                actions[act]()
+                return "break"
+            return None
+        root.bind("<Control-KeyPress>", window_key, add="+")
 
     def rebuild(self, note: str = "") -> None:
         """Rebuild the whole window (language, contrast or font changed); keeps the log and inputs."""

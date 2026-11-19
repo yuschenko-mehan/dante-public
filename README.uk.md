@@ -25,6 +25,7 @@ python -m dante gui        # вікно Данте
 python -m dante selftest   # самоперевірка
 ```
 
+🛠 **Установка на ПК і оновлення:** [docs/INSTALL.uk.md](docs/INSTALL.uk.md)
 📘 **Як додати нову модель ШІ:** [docs/MODELS.uk.md](docs/MODELS.uk.md)
 
 ## Підтримати проєкт

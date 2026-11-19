@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 PREFIX = "[dante]"
@@ -17,10 +18,21 @@ def available() -> bool:
     return shutil.which("git") is not None
 
 
+_BUSY = ("index.lock", "permission denied", "unable to create", "unable to write", "resource busy", "being used by another process")
+
+
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace"
-    )
+    """Run git; retry up to 3 times when a file is briefly locked (antivirus, heavy load on Windows).
+    Запустити git; до 3 повторів, якщо файл на мить заблокований (антивірус, велике навантаження у Windows)."""
+    for attempt in range(3):
+        r = subprocess.run(
+            ["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        )
+        busy = any(b in (r.stderr or "").lower() for b in _BUSY)
+        if r.returncode == 0 or not busy or attempt == 2:
+            return r
+        time.sleep(0.5 * (attempt + 1))
+    return r
 
 
 def ensure_repo(root: Path) -> bool:
@@ -29,6 +41,7 @@ def ensure_repo(root: Path) -> bool:
         return False
     if _git(root, "rev-parse", "--is-inside-work-tree").returncode != 0:
         _git(root, "init")
+        _exclude_local(root)
         _git(root, "config", "user.name", "DANTE")
         _git(root, "config", "user.email", "dante@localhost")
         _git(root, "add", "-A")
@@ -36,7 +49,25 @@ def ensure_repo(root: Path) -> bool:
     elif not _git(root, "config", "user.name").stdout.strip():
         _git(root, "config", "user.name", "DANTE")
         _git(root, "config", "user.email", "dante@localhost")
+    _exclude_local(root)
     return True
+
+
+def _exclude_local(root: Path, patterns: tuple[str, ...] = ("graphify-out/",)) -> None:
+    """Keep DANTE's own helper folders out of git without touching the user's .gitignore.
+    Не пускати в git службові теки Данте, не чіпаючи .gitignore користувача."""
+    try:
+        top = _git(root, "rev-parse", "--git-dir").stdout.strip()
+        if not top:
+            return
+        ex = (Path(root) / top / "info" / "exclude") if not Path(top).is_absolute() else Path(top) / "info" / "exclude"
+        ex.parent.mkdir(parents=True, exist_ok=True)
+        old = ex.read_text(encoding="utf-8") if ex.exists() else ""
+        add = [p for p in patterns if p not in old.splitlines()]
+        if add:
+            ex.write_text(old + ("" if old.endswith("\n") or not old else "\n") + "\n".join(add) + "\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 def commit(root: Path, message: str) -> str | None:

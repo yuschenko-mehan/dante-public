@@ -43,6 +43,7 @@ fn main() {
         let mut port_opt: Option<String> = None;
         let mut swarm_id: Option<String> = None;
         let mut tasks_file: Option<String> = None;
+        let mut ant_port: u16 = 47901;
 
         let mut i = pos + 1;
         while i < args.len() {
@@ -53,6 +54,10 @@ fn main() {
                         print_usage_and_exit();
                     }
                     swarm_id = Some(args[i + 1].clone());
+                    i += 2;
+                }
+                "--ant-port" => {
+                    ant_port = args.get(i + 1).and_then(|x| x.parse::<u16>().ok()).unwrap_or(47901);
                     i += 2;
                 }
                 "--tasks" => {
@@ -113,6 +118,8 @@ fn main() {
             }
         };
 
+        serving.queue.set_swarm(&swarm);
+        serving.queue.set_ant_port(ant_port);
         // Print address and short progress.
         // Вивести адресу та короткий прогрес.
         println!("Server listening on {} / Сервер слухає на {}", serving.addr, serving.addr);
@@ -145,6 +152,8 @@ fn main() {
     let mut coordinator_arg: Option<String> = None;
     let mut swarm_id: Option<String> = None;
     let mut once = false;
+    let mut heal_dir: Option<String> = None;
+    let mut silence: u64 = 120;
 
     let mut i = 0;
     while i < args.len() {
@@ -173,11 +182,20 @@ fn main() {
                 once = true;
                 i += 1;
             }
+            "--heal-dir" => {
+                if i + 1 >= args.len() { print_usage_and_exit(); }
+                heal_dir = Some(args[i + 1].clone());
+                i += 2;
+            }
+            "--silence" => {
+                silence = args.get(i + 1).and_then(|x| x.parse().ok()).unwrap_or(120);
+                i += 2;
+            }
             "--help" | "-h" => {
                 // Show usage and exit successfully.
                 // Показати інструкції та успішно завершити.
-                println!("murakha --coordinator HOST|auto [--swarm ID] [--once]");
-                println!("murakha --serve PORT [--swarm ID] [--tasks FILE]");
+                println!("murakha --coordinator HOST|auto [--swarm ID] [--once] [--heal-dir DIR] [--silence SECONDS]");
+                println!("murakha --serve PORT [--swarm ID] [--tasks FILE] [--ant-port PORT]");
                 return;
             }
             unknown => {
@@ -230,5 +248,25 @@ fn main() {
 
     // Start the ant loop with the resolved parameters.
     // Запускаємо цикл мурахи з отриманими параметрами.
+    if let Some(dir) = heal_dir {
+        let cfg = murakha::life::LifeCfg {
+            coordinator: addr, heal_dir: std::path::PathBuf::from(dir), silence: Duration::from_secs(silence),
+            io_timeout: Duration::from_secs(60), probe_timeout: Duration::from_secs(2), round_pause: Duration::from_secs(2), max_rounds: 30,
+        };
+        let serving = match murakha::life::live(&cfg) {
+            Ok(s) => s,
+            Err(e) => { eprintln!("Heal error: {} / Помилка відновлення: {}", e, e); process::exit(1); }
+        };
+        let me = serving.addr.to_string();
+        println!("This ant is now the coordinator at {} / Ця мураха тепер координатор на {}", me, me);
+        thread::spawn(move || ant::run_ant_loop(&me, false));
+        let mut printed = 0usize;
+        loop {
+            let results = serving.queue.results();
+            for res in results.iter().skip(printed) { println!("Result: {:?} / Результат: {:?}", res, res); }
+            printed = results.len();
+            thread::sleep(Duration::from_secs(1));
+        }
+    }
     ant::run_ant_loop(&addr, once);
 }

@@ -9,6 +9,12 @@ pub mod ant; // Ant module / Модуль мурахи
 pub mod discovery; // Discovery module / Модуль виявлення
 pub mod serve; // Serve module / Модуль запуску сервера
 pub mod survive; // Survive module / Модуль виживання
+pub mod health; // Health module / Модуль стану здоров'я
+pub mod plan; // Plan module / Модуль планування
+pub mod scout; // Scout module / Модуль пошуковця
+pub mod mailbag; // Mailbag module / Модуль торби мурахи
+pub mod heal; // Heal module / Модуль самовідновлення
+pub mod life; // Life module / Модуль життя мурахи
 
 #[cfg(test)]
 /// Tests for the library.
@@ -44,3 +50,4 @@ mod tests {
         assert!(!id.is_empty());
     }
 }
+

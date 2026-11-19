@@ -206,6 +206,11 @@ class Scheduler:
         self.running: dict[str, tuple[str, "threading.Thread"]] = {}  # lane -> (job name, thread)
         self._threading = threading
         self._last_temp_check, self._hot = 0.0, False
+        self._kinds: dict[str, tuple[str, float]] = {}  # lane -> (kind, start time)
+        try:
+            self._hist = json.loads((outbox / "durations.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self._hist = {}
 
     def _too_hot(self) -> bool:
         now = time.time()
@@ -272,6 +277,14 @@ class Scheduler:
             if not th.is_alive():
                 del self.running[lane]
                 self.say(f"done / готово: {name}")
+                if lane in self._kinds:
+                    from dante import eta as E
+                    k, t0 = self._kinds.pop(lane)
+                    E.record(self._hist, k, round(time.time() - t0, 1))
+                    try:
+                        (self.outbox / "durations.json").write_text(json.dumps(self._hist), encoding="utf-8")
+                    except OSError:
+                        pass
         self.outbox.mkdir(parents=True, exist_ok=True)
         done_dir = self.inbox / "done"
         done_dir.mkdir(parents=True, exist_ok=True)
@@ -294,11 +307,41 @@ class Scheduler:
             th = self._threading.Thread(target=_run_one, args=(job_path, self.outbox, done_dir, self.base, self.runner),
                                         daemon=True)
             self.running[lane] = (job_path.name, th)
+            from dante import eta as E
+            try:
+                jd = json.loads(job_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                jd = {}
+            self._kinds[lane] = (E.kind_of(jd, job_path.name), time.time())
             busy_names.add(job_path.name)
             th.start()
             started.append(job_path.name)
             self.say(f"start [{lane}]: {job_path.name}")
+        self._write_eta()
         return started
+
+    def _write_eta(self) -> None:
+        """Forecast when the queue is done / Прогноз, коли черга скінчиться."""
+        from datetime import datetime
+        from dante import eta as E
+        busy = {n for n, _ in self.running.values()}
+        lanes: dict[str, list[str]] = {}
+        for p in sorted(self.inbox.glob("*.json"), key=lambda p: p.name):
+            if p.name in busy:
+                continue
+            try:
+                jd = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                jd = {}
+            lanes.setdefault(job_lane(p), []).append(E.kind_of(jd, p.name))
+        now = time.time()
+        running = {ln: (k, now - t0) for ln, (k, t0) in self._kinds.items() if ln in self.running}
+        typ, wst = E.estimate(lanes, running, self._hist)
+        jobs = sum(len(v) for v in lanes.values()) + len(self.running)
+        try:
+            (self.outbox / "eta.txt").write_text(E.eta_text(datetime.now(), typ, wst, jobs), encoding="utf-8")
+        except OSError:
+            pass
 
 
 def process_once(inbox: Path, outbox: Path, base: Path, runner=None) -> list[str]:

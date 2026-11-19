@@ -199,14 +199,16 @@ def execute_plan(
         existing = [f for f in step.files if (root / f).is_file()]
         # Show the code the step builds on (read-only), so the model uses real names, not invented ones
         # Показати код, на який спирається крок (лише читання), щоб модель брала справжні назви, а не вигадані
-        read_only = project_sources(root, exclude=set(existing))
+        from dante import codemap
+        map_text = codemap.context(root, step.title + " " + step.description)
+        read_only = project_sources(root, exclude=set(existing), budget=8000) if map_text else project_sources(root, exclude=set(existing))
         if agent is not None:
             from dante.agent import run_agent_task
             result = run_agent_task(task, step.check, root, agent, settings, audit, protect=tuple(protect))
         else:
             from dante.config import LESSONS_FILE
             result = run_task(task, step.check, ws, llm, settings, audit, context_files=existing,
-                              read_only_files=read_only, lessons_path=LESSONS_FILE)
+                              read_only_files=read_only, lessons_path=LESSONS_FILE, map_text=map_text)
         if result.success:
             step.status = "done"
             step.commit = gitutil.commit(root, f"step {step.id}: {step.title}")

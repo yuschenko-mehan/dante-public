@@ -42,6 +42,7 @@ pub fn start(
     let server = Server::bind(bind)?;
     let addr = server.local_addr();
     let queue = server.queue();
+    queue.set_swarm(swarm);
 
     // Push each task with a timeout of 600 seconds.
     // Додати кожне завдання з тайм-аутом 600 секунд.

@@ -1,6 +1,7 @@
 """Window logic without tkinter (so it can be tested anywhere).
 
 What each button runs, the hotkey table, remembered settings and wallet totals.
+Логіка вікна без tkinter (щоб можна було тестувати будь-де).
 """
 
 from __future__ import annotations
@@ -40,6 +41,48 @@ def template_text(lang: str, label: str) -> str:
         if t(lang, "tpl_" + k) == label:
             return t(lang, f"tpl_{k}_text")
     return ""
+
+
+# Edit keys mapping / Мапа клавіш редагування
+EDIT_KEYS = {67: "<<Copy>>", 86: "<<Paste>>", 88: "<<Cut>>", 65: "<<SelectAll>>"}   # C V X A
+
+# Window keys mapping by virtual key code / Мапа клавіш вікна за кодом віртуальної клавіші
+WINDOW_KEYS_BY_CODE = {80: "plan", 84: "tests", 77: "models", 71: "github"}          # P T M G
+
+
+def edit_event(keycode: int, keysym: str) -> str | None:
+    """Return virtual event for edit key or None if handled by Latin layout.
+    Повернути віртуальну подію для клавіші редагування або None, якщо оброблено латинською розкладкою."""
+    if keysym.lower() in ("c", "v", "x", "a"):
+        return None
+    return EDIT_KEYS.get(keycode)
+
+
+def window_action(keycode: int, keysym: str) -> str | None:
+    """Return window action for hotkey or None if handled by Latin layout.
+    Повернути дію вікна для гарячої клавіші або None, якщо оброблено латинською розкладкою."""
+    if keysym.lower() in ("p", "t", "m", "g"):
+        return None
+    return WINDOW_KEYS_BY_CODE.get(keycode)
+
+
+def context_menu(lang: str) -> list[tuple[str, str]]:
+    """Return context menu items [(label, virtual event)] for the given language.
+    Повернути пункти контекстного меню [(мітка, віртуальна подія)] для заданої мови."""
+    if lang == "uk":
+        return [
+            ("Вирізати", "<<Cut>>"),
+            ("Копіювати", "<<Copy>>"),
+            ("Вставити", "<<Paste>>"),
+            ("Виділити все", "<<SelectAll>>"),
+        ]
+    else:
+        return [
+            ("Cut", "<<Cut>>"),
+            ("Copy", "<<Copy>>"),
+            ("Paste", "<<Paste>>"),
+            ("Select all", "<<SelectAll>>"),
+        ]
 
 
 # Global hotkeys (work from any program on Windows). id: (modifiers, virtual key, action, keys)
@@ -109,7 +152,8 @@ def save_state(st: State, path: Path | None = None) -> None:
 
 
 class InputError(ValueError):
-    """Something the author must fill in first (shown as a friendly message)."""
+    """Something the author must fill in first (shown as a friendly message).
+    Те, що автор має спочатку заповнити (показується як дружнє повідомлення)."""
 
 
 def _need_project(st: State) -> str:
@@ -119,7 +163,7 @@ def _need_project(st: State) -> str:
 
 
 def dante_args(action: str, st: State) -> list[str]:
-    """Arguments for `python -m dante ...` for a button."""
+    """Arguments for `python -m dante ...` for a button. / Аргументи для `python -m dante ...` для кнопки."""
     if action == "run":
         project = _need_project(st)
         if not st.task.strip():
@@ -188,7 +232,8 @@ def wallet_summary(lang: str = "uk") -> str:
 
 
 def make_desktop_shortcut(target: Path | None = None, lang: str = "uk") -> str:
-    """Windows: put a «DANTE» shortcut on the desktop that opens the window. Returns a message."""
+    """Windows: put a «DANTE» shortcut on the desktop that opens the window. Returns a message.
+    Windows: покласти ярлик «DANTE» на робочий стіл, який відкриває вікно. Повертає повідомлення."""
     import subprocess
     target = target or (DANTE_ROOT / "Dante.bat")
     ps = ("$d=[Environment]::GetFolderPath('Desktop'); $s=(New-Object -ComObject WScript.Shell)"

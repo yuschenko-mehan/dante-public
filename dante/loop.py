@@ -1,7 +1,10 @@
 """The core loop: task -> model writes files -> run tests -> fix -> repeat.
+Основний цикл: завдання -> модель пише файли -> запустити тести -> виправити -> повторити.
 
 On success the changes are kept. If every attempt fails, all changes
 are rolled back, so the project is never left half-broken.
+У разі успіху зміни зберігаються. Якщо кожна спроба зазнає невдачі, всі зміни
+відкочуються, тому проєкт ніколи не залишається наполовину зламаним.
 """
 
 from __future__ import annotations
@@ -103,6 +106,7 @@ def run_task(
     context_files: list[str] | None = None,
     read_only_files: list[str] | None = None,
     lessons_path=None,
+    map_text: str = "",
 ) -> LoopResult:
     """lessons_path: lessons.json — read before work, written after a fixed mistake (None = off).
     lessons_path: файл уроків — читається перед роботою, поповнюється після виправленої помилки."""
@@ -131,6 +135,8 @@ def run_task(
             return LoopResult(False, attempt - 1, touched, last_run,
                               f"Time limit {settings.task_time_limit_s}s reached", models, tokens[0], tokens[1])
         prompt = f"TASK:\n{task}\n\nTEST COMMAND (must pass): {test_command}\n"
+        if map_text:
+            prompt += f"\n{map_text}\n"
         if read_only_files:
             prompt += (
                 "\nREAD-ONLY FILES (you may NOT change these; make the code satisfy them):\n"
@@ -165,7 +171,7 @@ def run_task(
         )
 
         try:
-            edits = parse_edits(resp.content)
+            edits = parse_edits(resp.content, read=lambda p: ws.resolve(p).read_text(encoding="utf-8") if ws.resolve(p).exists() else None)
             written = ws.apply(edits)
         except ValueError as e:  # bad format or unsafe path
             audit.log("edit_rejected", attempt=attempt, reason=str(e))
@@ -204,3 +210,4 @@ def run_task(
     audit.log("task_failed", attempts=settings.max_fix_attempts)
     return LoopResult(False, settings.max_fix_attempts, touched, last_run, "All attempts failed",
                       models, tokens[0], tokens[1])
+
