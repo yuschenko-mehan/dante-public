@@ -25,6 +25,8 @@ python -m dante gui        # DANTE window
 python -m dante selftest   # self-test
 ```
 
+📘 **How to add a new AI model:** [docs/MODELS.md](docs/MODELS.md)
+
 ## Support the project
 
 DANTE is free and is built at the author's own expense during the war in Ukraine. If it helps you, please support it:
