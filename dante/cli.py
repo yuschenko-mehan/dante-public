@@ -311,17 +311,91 @@ def _cmd_run(args: argparse.Namespace) -> int:
                 read_only.append(rel)  # protected: show it, but read-only
     from dante import codemap
     map_text = codemap.context(root, task)
+    from dante import gui_logic as _G
+    use_critic = _G.critic_enabled() and not getattr(args, "no_critic", False)
+    from dante import contest as _K, contest_run as _CR
+    import datetime as _dt
+    _today = _dt.date.today().isoformat()
+    if (getattr(args, "contest", False) or _G.contest_enabled()) and _CR.used_today(_CR.USAGE_FILE, _today) < _K.DEFAULTS["per_day"]:
+        from dataclasses import replace as _rep
+        from dante.llm import build_llm as _bl
+        names = [p.name for p in s.active_providers() if not p.backup][: _K.DEFAULTS["max_models"]]
+
+        def _run_one(model, task_, test_, copy_root):
+            one = _rep(s, order=(model,))
+            ws1 = Workspace(copy_root, tuple(s.protected_paths) + tuple(args.protect))
+            return run_task(task_, test_, ws1, _bl(one), one, audit, context_files=context, read_only_files=read_only,
+                            lessons_path=LESSONS_FILE, map_text=map_text, critic=True)
+
+        out = _CR.run_contest(task, test, root, names, _run_one)
+        _CR.note_use(_CR.USAGE_FILE, _today)
+        print(f"Contest / Конкурс: winner {out['winner']}")
+        for m, ok, sc in out["results"]:
+            print(f"  {m}: {'OK' if ok else 'FAIL'} {sc:g}")
+        return 0 if out["winner"] else 1
+    teacher = None
+    if not getattr(args, "no_teacher", False):
+        # Academy: up to 3 other models give hints after a failed attempt / Академія: до 3 інших моделей дають підказки
+        from dataclasses import replace as _rp
+        from dante.llm import build_llm as _bt
+        names = [p.name for p in s.active_providers() if not p.backup]
+        teacher = []
+        for name in names[1:4]:
+            try:
+                teacher.append(_bt(_rp(s, order=(name,))))
+            except Exception:
+                pass
+        teacher = teacher or None
     result = run_task(task, test, ws, llm, s, audit, context_files=context, read_only_files=read_only,
-                      lessons_path=LESSONS_FILE, map_text=map_text)
+                      lessons_path=LESSONS_FILE, map_text=map_text, critic=use_critic, teacher=teacher)
 
     status = "SUCCESS" if result.success else "FAILED"
     print(f"{status} after {result.attempts} attempt(s). Files: {', '.join(result.files) or '-'}")
     if result.error:
         print(f"Reason: {result.error}")
+    if result.critic_score is not None:
+        print(f"Critic / Критик: {result.critic_score:g}/10")
+        for issue in result.critic_issues:
+            print(f"  - {issue}")
     if result.last_run and not result.success:
         print("Last test output:\n" + result.last_run.output[-1500:])
     print(f"Audit log: {audit.path}")
     return 0 if result.success else 1
+
+
+def _cmd_perf(args) -> int:
+    """How much better DANTE got / Наскільки Данте став кращим."""
+    from datetime import datetime as _d
+    from dante import perf
+    d = Path(args.audit_dir) if args.audit_dir else Path(__file__).resolve().parents[1] / "audit"
+    print(perf.report(perf.compare(perf.load_runs(d), _d.fromisoformat(args.since))))
+    return 0
+
+
+def _cmd_collect(args) -> int:
+    """Collect code from an AI conversation into a project / Зібрати код з розмови зі ШІ у проєкт."""
+    from dante import collector
+    src = Path(args.src)
+    if not src.is_file():
+        print(f"No such file / Немає файлу: {src}")
+        return 2
+    root = Path(args.project).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+
+    def fix(cmd):
+        ns = argparse.Namespace(**vars(args))
+        ns.task = f"Make the project assembled from an AI conversation pass: {cmd}. Change only what is needed."
+        ns.test = cmd
+        for k, v in (("file", []), ("protect", []), ("dry_run", False), ("agent", None), ("audit_dir", None), ("no_critic", False), ("contest", False)):
+            if not hasattr(ns, k):
+                setattr(ns, k, v)
+        return _cmd_run(ns) == 0
+
+    out = collector.assemble(src.read_text(encoding="utf-8"), root, run_fix=None if args.no_fix else fix, check=args.test)
+    for f in out["files"]:
+        print(f"  + {f}")
+    print(f"Files / Файлів: {len(out['files'])}; check / перевірка: {out['check'] or '-'}; ok: {out['ok']}")
+    return 1 if out["ok"] is False else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -417,7 +491,20 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--dry-run", action="store_true", help="demo run without a model")
     r.add_argument("--agent", choices=["codex", "gemini"], help="let an external agent (Codex / Gemini CLI) write the code")
     r.add_argument("--audit-dir", help="where to write the audit log")
+    r.add_argument("--no-critic", action="store_true", help="switch the critic off for this run / вимкнути критика")
+    r.add_argument("--no-teacher", action="store_true", help="switch the Academy off / вимкнути Академію")
+    r.add_argument("--contest", action="store_true", help="several models at once, the critic picks the best / кілька моделей одразу")
     r.set_defaults(func=_cmd_run)
+    c = sub.add_parser("collect", help="code from an AI conversation -> project / код з розмови зі ШІ -> проєкт")
+    c.add_argument("--from", dest="src", required=True, help="conversation file (text / Markdown)")
+    c.add_argument("--project", required=True, help="project folder")
+    c.add_argument("--test", help="check command (default: build / compile)")
+    c.add_argument("--no-fix", action="store_true", help="only write the files / лише записати файли")
+    c.set_defaults(func=_cmd_collect)
+    pf = sub.add_parser("perf", help="compare results before/after a moment / порівняти до і після")
+    pf.add_argument("--since", required=True)
+    pf.add_argument("--audit-dir")
+    pf.set_defaults(func=_cmd_perf)
     return p
 
 

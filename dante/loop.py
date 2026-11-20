@@ -83,6 +83,57 @@ def _learn(llm, task: str, first_failure: str, path, audit) -> None:
         audit.log("lesson_skipped", reason=str(e)[:200])
 
 
+CRITIC_SYSTEM = "You are a strict code reviewer. Answer ONLY with JSON."
+
+
+def _review(llm, task, ws, touched, audit, res) -> None:
+    """Critic: score the passing solution / Критик: оцінити рішення, що пройшло тести."""
+    from dante import critic as C
+    try:
+        parts = []
+        for p in touched:
+            f = ws.resolve(p)
+            if f.exists():
+                parts.append(f"=== {p} ===\n" + f.read_text(encoding="utf-8", errors="replace"))
+        resp = llm.complete(CRITIC_SYSTEM, C.critic_prompt(task, "\n".join(parts)[:8000]))
+        review = C.parse_critic(resp.content)
+        res.critic_score, res.critic_issues = review["score"], review["issues"]
+        audit.log("critic", score=res.critic_score, issues=res.critic_issues)
+    except Exception:
+        res.critic_score, res.critic_issues = None, []
+
+
+TEACHER_SYSTEM = ("You are a teacher in the academy of a coding assistant. Find the ROOT CAUSE of the failure and give "
+                  "ONE precise, concrete hint for the next attempt. At most 5 lines. No code blocks.")
+
+
+def teacher_prompt(task: str, code: str, error: str) -> str:
+    """Prompt for a teacher model / Запит до моделі-вчителя."""
+    return (f"TASK:\n{task[:1500]}\n\nCURRENT CODE:\n{code[:6000]}\n\nTEST OUTPUT (end):\n{error[-3000:]}\n\n"
+            "Explain the root cause in 1-2 lines, then give one precise hint to fix it.")
+
+
+def _academy(teachers, task: str, code: str, error: str) -> list[str]:
+    """Ask up to 3 teachers in parallel; failed or empty answers are skipped.
+    Спитати до 3 учителів паралельно; невдалі чи порожні відповіді пропускаються."""
+    import threading
+    prompt = teacher_prompt(task, code, error)
+    out: list[str | None] = [None] * len(teachers)
+
+    def ask(i, t):
+        try:
+            out[i] = (t.complete(TEACHER_SYSTEM, prompt).content or "").strip()[:1500] or None
+        except Exception:
+            out[i] = None
+
+    threads = [threading.Thread(target=ask, args=(i, t), daemon=True) for i, t in enumerate(teachers)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join(timeout=180)
+    return [h for h in out if h]
+
+
 @dataclass
 class LoopResult:
     success: bool
@@ -94,6 +145,8 @@ class LoopResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     llm_failed: bool = False  # True if the run ended because no model answered
+    critic_score: float | None = None
+    critic_issues: list[str] = field(default_factory=list)
 
 
 def run_task(
@@ -107,6 +160,8 @@ def run_task(
     read_only_files: list[str] | None = None,
     lessons_path=None,
     map_text: str = "",
+    teacher=None,
+    critic: bool = False,
 ) -> LoopResult:
     """lessons_path: lessons.json — read before work, written after a fixed mistake (None = off).
     lessons_path: файл уроків — читається перед роботою, поповнюється після виправленої помилки."""
@@ -115,6 +170,8 @@ def run_task(
     models: list[str] = []
     tokens = [0, 0]
     feedback = ""
+    hints: list[str] = []
+    teachers = ([] if teacher is None else list(teacher) if isinstance(teacher, (list, tuple)) else [teacher])[:3]
     last_run: RunResult | None = None
     audit.log(
         "task_start", task=task, test_command=test_command,
@@ -147,6 +204,8 @@ def run_task(
             prompt += f"\nCURRENT FILES:\n{current}\n"
         if feedback:
             prompt += f"\nPREVIOUS ATTEMPT FAILED. Test output:\n{feedback}\nFix it.\n"
+        if hints:
+            prompt += "\nACADEMY HINTS (from other models):\n" + "\n".join(f"{i}) {h}" for i, h in enumerate(hints, 1)) + "\n"
 
         try:
             resp = llm.complete(system, prompt)
@@ -202,9 +261,18 @@ def run_task(
             audit.log("task_success", attempts=attempt, files=touched)
             if attempt > 1 and lessons_path is not None and first_failure:
                 _learn(llm, task, first_failure, lessons_path, audit)
-            return LoopResult(True, attempt, touched, last_run, None, models, tokens[0], tokens[1])
+            res = LoopResult(True, attempt, touched, last_run, None, models, tokens[0], tokens[1])
+            if critic:
+                _review(llm, task, ws, touched, audit, res)
+            return res
         feedback = last_run.output
         first_failure = first_failure or feedback
+        hints = []
+        if teachers and attempt >= settings.solo_attempts and attempt < settings.max_fix_attempts:
+            code = "\n".join(f"=== {p} ===\n" + ws.resolve(p).read_text(encoding="utf-8", errors="replace")
+                             for p in touched if ws.resolve(p).exists())
+            hints = _academy(teachers, task, code, feedback)
+            audit.log("academy_hints", attempt=attempt, hints=hints)
 
     ws.rollback()
     audit.log("task_failed", attempts=settings.max_fix_attempts)

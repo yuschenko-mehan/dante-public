@@ -34,6 +34,9 @@ class HubInSettingsTest(unittest.TestCase):
         self.assertFalse(s.allow_paid)
 
     def test_no_file_changes_nothing(self):
+        import os
+        os.environ["DANTE_NO_ROUTING"] = "1"   # routing reorders by live stats / маршрутизація міняє порядок за статистикою
+        self.addCleanup(os.environ.pop, "DANTE_NO_ROUTING", None)
         self.assertEqual(config.load_settings(self.d / "none.toml", self.m), config.Settings())
 
     def test_models_json_is_protected_from_the_llm(self):

@@ -419,7 +419,8 @@ class DanteWindow:
         row2 = [("test_btn", self.run_tests), ("undo", self.undo),
                 ("history", lambda: self.start("history")), ("journal", self.open_audit),
                 ("wallet", self.wallet), ("ping", lambda: self.start("ping")), ("models_btn", self.open_models),
-                ("github_btn", self.open_github), ("keys", self.show_help)]
+                ("github_btn", self.open_github), ("flash_to", lambda: self.flash_keys("to")),
+                ("flash_from", lambda: self.flash_keys("from")), ("keys", self.show_help)]
         for i, (key, cmd) in enumerate(row2):
             b2.columnconfigure(i, weight=1, uniform="b2")
             ttk.Button(b2, text=t(lg, key), command=cmd, style="Small.TButton").grid(
@@ -718,6 +719,19 @@ class DanteWindow:
             pass
         from dante.gui_models import ModelsWindow
         self.models_win = ModelsWindow(self)
+
+    def flash_keys(self, mode: str) -> None:
+        """Keys to / from a USB flash drive in a console window (the passphrase is typed there).
+        Ключі на флешку / з флешки у вікні консолі (фразу вводять там)."""
+        exe = Path(sys.executable)
+        con = exe.with_name("python.exe") if exe.name.lower() == "pythonw.exe" else exe
+        flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        try:
+            subprocess.Popen([str(con), "-m", "dante.flash_keys", mode], cwd=str(Path(__file__).resolve().parents[1]),
+                             creationflags=flags)
+            self.say(t(self.lang, "flash_to" if mode == "to" else "flash_from") + " …")
+        except Exception as e:  # never crash the window / вікно не падає
+            self.say(f"flash: {e}")
 
     def open_github(self) -> None:
         """The GitHub window (one at a time) / Вікно GitHub (одне)."""

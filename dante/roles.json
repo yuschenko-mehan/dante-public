@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "languages": ["uk", "en"],
+  "roles": [
+    {
+      "id": "archant",
+      "order": 1,
+      "name": {
+        "uk": "Архант",
+        "en": "Archant"
+      },
+      "summary": {
+        "uk": "Головний Данте власника, будує програми, керує роєм та Князями",
+        "en": "The owner's main DANTE, builds programs, commands the swarm and the Knyazes"
+      },
+      "needs": ["flash_or_new_swarm"],
+      "components": [
+        "python",
+        "git",
+        "gh",
+        "node",
+        "dante",
+        "graphify",
+        "obsidian",
+        "chatbox",
+        "freellmapi",
+        "claude_code",
+        "murakha",
+        "shortcuts",
+        "pult_autostart"
+      ]
+    },
+    {
+      "id": "reserve",
+      "order": 2,
+      "name": {
+        "uk": "Резервний Архант",
+        "en": "Reserve Archant"
+      },
+      "summary": {
+        "uk": "Другий пристрій власника на кшталт ноутбука, повний Данте, стає Архантом лише з флешкою архітектора, доти працює як мураха",
+        "en": "The owner's second device such as a laptop, full DANTE, becomes the Archant only with the architect flash, until then works as an ant"
+      },
+      "needs": ["flash"],
+      "components": [
+        "python",
+        "git",
+        "gh",
+        "node",
+        "dante",
+        "graphify",
+        "obsidian",
+        "chatbox",
+        "freellmapi",
+        "claude_code",
+        "murakha",
+        "shortcuts",
+        "pult_autostart"
+      ]
+    },
+    {
+      "id": "knyaz",
+      "order": 3,
+      "name": {
+        "uk": "Князь",
+        "en": "Knyaz"
+      },
+      "summary": {
+        "uk": "ПК друга, жертвує вільні ресурси, виконує лише підписані Архантом накази з контролем температури",
+        "en": "A friend's PC, donates idle resources, runs only orders signed by the Archant, with temperature control"
+      },
+      "needs": ["consent", "archant_public"],
+      "components": [
+        "murakha",
+        "ollama",
+        "knyaz_service"
+      ]
+    },
+    {
+      "id": "ant",
+      "order": 4,
+      "name": {
+        "uk": "Мураха",
+        "en": "Ant"
+      },
+      "summary": {
+        "uk": "Легкий робітник у рої власника на будь-якому ПК",
+        "en": "A light worker in the owner's swarm on any PC"
+      },
+      "needs": ["swarm_key"],
+      "components": [
+        "murakha",
+        "ant_autostart"
+      ]
+    },
+    {
+      "id": "solo",
+      "order": 5,
+      "name": {
+        "uk": "Окремий Данте",
+        "en": "Standalone DANTE"
+      },
+      "summary": {
+        "uk": "Просто будівельник програм, без рою",
+        "en": "Just the program builder, no swarm"
+      },
+      "needs": [],
+      "components": [
+        "python",
+        "git",
+        "dante",
+        "graphify",
+        "shortcuts"
+      ]
+    }
+  ]
+}

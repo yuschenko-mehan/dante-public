@@ -273,3 +273,29 @@ def set_contest(on: bool, path: Path | None = None) -> None:
         data = {}
     data["enabled"] = bool(on)
     target.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+CRITIC_FILE = Path(__file__).resolve().parents[1] / "critic.json"
+
+
+def critic_enabled(path: Path | None = None) -> bool:
+    """Critic: ON by default / Критик: типово УВІМКНЕНИЙ."""
+    import json
+    try:
+        return bool(json.loads((path or CRITIC_FILE).read_text(encoding="utf-8")).get("enabled", True))
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
+def set_critic(on: bool, path: Path | None = None) -> None:
+    """Switch the critic / Перемкнути критика."""
+    import json
+    target = path or CRITIC_FILE
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except (OSError, ValueError):
+        data = {}
+    data["enabled"] = bool(on)
+    target.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")

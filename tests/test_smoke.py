@@ -160,7 +160,9 @@ class TestMultiModel(unittest.TestCase):
     def test_toml_overrides_provider(self):
         p = Path(tempfile.mkdtemp()) / "dante.toml"
         p.write_text('order = ["claude"]\nstrategy = "fallback"\n[providers.claude]\nmodel = "claude-opus-5-5"\n', encoding="utf-8")
-        s = load_settings(p)
+        os.environ["DANTE_NO_ROUTING"] = "1"   # isolate from live stats and the author's models.json
+        self.addCleanup(os.environ.pop, "DANTE_NO_ROUTING", None)
+        s = load_settings(p, p.parent / "no-models.json")
         self.assertEqual(s.order, ("claude",))
         self.assertEqual({x.name: x.model for x in s.providers}["claude"], "claude-opus-5-5")
 

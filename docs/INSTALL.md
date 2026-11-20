@@ -2,6 +2,12 @@
 
 [Українська версія](INSTALL.uk.md)
 
+## Easiest install
+1. Open **Releases** and download the newest `dante-<version>.zip`.
+2. Unpack it anywhere (for example, Downloads).
+3. Double-click **`Install-DANTE.cmd`**. It installs Python 3.13 and Git if needed (winget; Windows may ask for permission), copies DANTE to `C:\DANTE\dante` (your keys, models and lessons are never overwritten), asks for the **language** and the **role**, makes the **DANTE** desktop shortcut and, for the Archant, the pult autostart, and offers to **restore keys from a flash drive** saved with the "Keys → USB" button.
+4. Open DANTE with the shortcut. No keys yet? Use **"+ Models"** (Ctrl+M), see [docs/MODELS.md](MODELS.md).
+
 ## Requirements
 - Windows 10 or 11 (64-bit).
 - **Python 3.13**: from the Microsoft Store (search "Python 3.13") or https://www.python.org (tick **"Add python.exe to PATH"**).

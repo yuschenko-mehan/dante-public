@@ -52,3 +52,7 @@ mod tests {
 }
 
 pub mod heart;
+pub mod secure; // Secure module / Модуль безпеки рою
+pub mod order; // Order module / Модуль наказів
+pub mod thermal; // Thermal guard module / Модуль температурного захисту
+pub mod flash; // Flash module / Модуль флеш-накопичувача

@@ -110,6 +110,9 @@ class Settings:
     request_timeout_s: int = 120
 
     max_fix_attempts: int = 3
+    # Own failed attempts before the Academy is asked (2 = after two mistakes, ask on the third).
+    # Власних невдалих спроб до звернення в Академію (2 = після двох помилок, на третю — Академія).
+    solo_attempts: int = 2
     command_timeout_s: int = 300
 
     # Money (see wallet.py). Paid models are never used unless allow_paid = true AND the
@@ -164,7 +167,12 @@ def with_hub(s: Settings, models_path: Path | None = None) -> Settings:
 
 def load_settings(path: Path | None = None, models_path: Path | None = None) -> Settings:
     """Load settings from a TOML file (missing file -> defaults; unknown keys -> error) plus models.json."""
-    return with_hub(_load_toml(path), models_path)
+    s = with_hub(_load_toml(path), models_path)
+    import os
+    if os.environ.get("DANTE_NO_ROUTING") == "1":
+        return s
+    from dante import routing
+    return routing.apply_routing(s)
 
 
 def _load_toml(path: Path | None = None) -> Settings:

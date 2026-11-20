@@ -41,6 +41,7 @@ struct TaskQueueInner {
     ant_port: u16,
     order: Vec<(String, String)>,
     heart: Option<(String, Vec<Vec<u8>>)>,
+    swarm_key: Option<Vec<u8>>,
 }
 
 /// Placeholder struct for ant tracking.
@@ -73,6 +74,9 @@ impl TaskQueue {
     /// Return number of pending tasks.
     /// Повернути кількість очікуючих завдань.
     pub fn set_swarm(&self, swarm: &str) { self.inner.lock().unwrap().swarm = swarm.to_string(); }
+    pub fn set_swarm_key(&self, key: Vec<u8>) {
+        self.inner.lock().unwrap().swarm_key = Some(key);
+    }
     pub fn set_heart(&self, version: &str, bundle: &[u8], chunk_size: usize) {
         self.inner.lock().unwrap().heart = Some((version.to_string(), crate::heart::chunks(bundle, chunk_size)));
     }
@@ -131,6 +135,7 @@ impl Server {
                 ant_port: 47901,
                 order: Vec::new(),
                 heart: None,
+                swarm_key: None,
             })),
         };
         Ok(Server { listener, queue })
@@ -182,7 +187,16 @@ pub fn wants_snapshots(version: &str) -> bool {
     match (major, minor) { (Some(a), Some(b)) => (a, b) >= (0, 3), _ => false }
 }
 
+fn send_line(w: &mut TcpStream, chan: &mut Option<crate::secure::Channel>, line: &str) {
+    // Signed when the swarm key is on / Підписано, коли ключ рою увімкнено
+    let out = match chan { Some(c) => c.seal(line), None => line.to_string() };
+    let _ = writeln!(w, "{}", out);
+}
+
 fn handle_connection(stream: TcpStream, queue: TaskQueue) -> io::Result<()> {
+    let key = queue.inner.lock().unwrap().swarm_key.clone();
+    let mut chan: Option<crate::secure::Channel> = None;
+    let mut nonce_c: Option<String> = None;
     let local = stream.local_addr()?.to_string();
     let peer_ip = stream.peer_addr()?.ip().to_string();
     let mut snaps = false;
@@ -205,12 +219,34 @@ fn handle_connection(stream: TcpStream, queue: TaskQueue) -> io::Result<()> {
             Ok(_) => {
                 // Try to convert to string, skip line if invalid UTF-8
                 // Спробуємо перетворити на рядок, пропускаємо рядок якщо недійсний UTF-8
-                let line_str = match std::str::from_utf8(&line_buf) {
-                    Ok(s) => s.trim_end_matches(['\r', '\n']),
+                let raw = match std::str::from_utf8(&line_buf) {
+                    Ok(s) => s.trim_end_matches(['\r', '\n']).to_string(),
                     Err(_) => continue, // Ignore broken lines / Ігнорувати зламані рядки
                 };
-                if line_str.is_empty() {
+                if raw.is_empty() {
                     continue;
+                }
+                let opened;
+                let line_str: &str = if let Some(c) = chan.as_mut() {
+                    match c.open(&raw) { Ok(l) => { opened = l; &opened } Err(_) => break }
+                } else { &raw };
+                if let (Some(k), Some(nc)) = (key.as_ref(), nonce_c.as_ref()) {
+                    if chan.is_none() {
+                        // Waiting for the ant's proof / Чекаємо доказ від мурахи
+                        let f: Vec<&str> = line_str.split('\t').collect();
+                        let id = current_ant_id.clone().unwrap_or_default();
+                        if f.len() == 3 && f[0] == "AUTH" && crate::secure::eq_ct(&crate::secure::ant_proof(k, nc, f[1], &id), f[2]) {
+                            let _ = writeln!(writer, "AUTH\t{}", crate::secure::coord_proof(k, nc, f[1]));
+                            chan = Some(crate::secure::Channel::new(crate::secure::session_key(k, nc, f[1]), false));
+                            continue;
+                        }
+                        let _ = writeln!(writer, "BYE");
+                        break;
+                    }
+                }
+                if key.is_some() && nonce_c.is_none() && !line_str.starts_with("HELLO\t") {
+                    let _ = writeln!(writer, "BYE");
+                    break;
                 }
                 match AntMessage::parse(line_str) {
                     Ok(AntMessage::Hello { id, version, .. }) => {
@@ -219,6 +255,12 @@ fn handle_connection(stream: TcpStream, queue: TaskQueue) -> io::Result<()> {
                         let mut inner = queue.inner.lock().unwrap();
                         if !inner.order.iter().any(|(i, _)| i == &id) { inner.order.push((id.clone(), peer_ip.clone())); }
                         inner.ants.insert(id, InstantPlaceholder {});
+                        drop(inner);
+                        if key.is_some() && nonce_c.is_none() {
+                            let nc = crate::secure::nonce();
+                            let _ = writeln!(writer, "CHAL\t{}", nc);
+                            nonce_c = Some(nc);
+                        }
                     }
                     Ok(AntMessage::Ask { id }) => {
                         if current_ant_id.is_none() {
@@ -234,14 +276,14 @@ fn handle_connection(stream: TcpStream, queue: TaskQueue) -> io::Result<()> {
                                 })
                             };
                             if let Some(msg) = chunk {
-                                let _ = writeln!(writer, "{}", msg.to_line());
+                                send_line(&mut writer, &mut chan, &msg.to_line());
                                 continue;
                             }
                         }
                         if snaps && asks % 20 == 1 {
                             let snap = crate::heal::encode(&queue.snapshot_for(&local));
                             let msg = CoordMessage::Snap { data: crate::protocol::hex_encode(&snap) };
-                            let _ = writeln!(writer, "{}", msg.to_line());
+                            send_line(&mut writer, &mut chan, &msg.to_line());
                             continue;
                         }
                         let mut inner = queue.inner.lock().unwrap();
@@ -257,10 +299,10 @@ fn handle_connection(stream: TcpStream, queue: TaskQueue) -> io::Result<()> {
                                 timeout_s,
                                 command,
                             };
-                            let _ = writeln!(writer, "{}", msg.to_line());
+                            send_line(&mut writer, &mut chan, &msg.to_line());
                         } else {
                             let msg = CoordMessage::Wait { seconds: 5 };
-                            let _ = writeln!(writer, "{}", msg.to_line());
+                            send_line(&mut writer, &mut chan, &msg.to_line());
                         }
                     }
                     Ok(AntMessage::Result { id, task_id, exit_code, output }) => {

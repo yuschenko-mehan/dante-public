@@ -407,6 +407,12 @@ def main(argv: list[str] | None = None) -> int:
         (base / "pult.pid").write_text(str(os.getpid()), encoding="utf-8")
     except OSError:
         pass
+    try:  # phone panel starts with the pult; failure only logged / панель стартує з пультом; збій лише в журнал
+        from dante import panel
+        _srv, _thr, _tok = panel.start(base)
+        say(f"DANTE panel: http://<this-PC>:{_srv.server_address[1]}/?t=<see panel-token.txt> / панель для телефона запущена")
+    except Exception as e:
+        say("panel not started / панель не запущена:", type(e).__name__, e)
     sched = Scheduler(inbox, outbox, base, max_parallel=max(1, args.parallel), max_temp=args.max_temp, say=say)
     sched.auto_adapt = True  # idle full load + heartbeat + watchdog / простій, пульс, сторож
     say(f"DANTE pult: watching {inbox}, parallel {sched.max_parallel}, max GPU {args.max_temp} C / стежу, паралельно {sched.max_parallel}")
