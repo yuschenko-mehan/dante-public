@@ -76,6 +76,12 @@ pub enum CoordMessage {
     Snap {
         data: String,
     },
+    Heart {
+        version: String,
+        index: u32,
+        total: u32,
+        data: String,
+    },
     Bye,
 }
 
@@ -164,6 +170,9 @@ impl CoordMessage {
             CoordMessage::Snap { data } => {
                 format!("SNAP\t{}", data)
             }
+            CoordMessage::Heart { version, index, total, data } => {
+                format!("HEART\t{}\t{}\t{}\t{}", version, index, total, data)
+            }
             CoordMessage::Bye => {
                 "BYE".to_string()
             }
@@ -204,6 +213,14 @@ impl CoordMessage {
                 Ok(CoordMessage::Snap {
                     data: parts[1].to_string(),
                 })
+            }
+            "HEART" => {
+                if parts.len() != 5 {
+                    return Err("Invalid HEART fields count / Невірна кількість полів HEART");
+                }
+                let index = parts[2].parse().map_err(|_| "Invalid HEART index / Недійсний індекс HEART")?;
+                let total = parts[3].parse().map_err(|_| "Invalid HEART total / Недійсна кількість HEART")?;
+                Ok(CoordMessage::Heart { version: parts[1].to_string(), index, total, data: parts[4].to_string() })
             }
             "BYE" => {
                 if parts.len() != 1 {

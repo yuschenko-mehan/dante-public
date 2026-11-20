@@ -119,6 +119,7 @@ pub fn run_session_snap(coordinator_addr: &str, ant_id: &str, once: bool, io_tim
     write_stream.write_all(format!("{}\n", hello.to_line()).as_bytes())?;
 
     let mut reader = BufReader::new(stream);
+    let mut hearts: std::collections::HashMap<String, crate::heart::Assembler> = std::collections::HashMap::new();
 
     loop {
         // Send ASK message / Надіслати повідомлення ASK
@@ -174,6 +175,19 @@ pub fn run_session_snap(coordinator_addr: &str, ant_id: &str, once: bool, io_tim
                     }
                 }
                 // After SNAP the ant just asks again / Після SNAP мураха просто питає знову
+            }
+            CoordMessage::Heart { version, index, total, data } => {
+                // Collect the heart of DANTE piece by piece / Збирати серце Данте частинами
+                if let (Some(dir), Ok(bytes)) = (snap_dir, hex_decode(&data)) {
+                    let asm = hearts.entry(version).or_insert_with(|| crate::heart::Assembler::new(total as usize));
+                    if asm.add(index as usize, bytes) {
+                        if let Some(bundle) = asm.finish() {
+                            if crate::heart::list(&bundle).is_ok() {
+                                let _ = crate::survive::store(&dir.join("heart"), &bundle, 2);
+                            }
+                        }
+                    }
+                }
             }
             CoordMessage::Bye => {
                 break;

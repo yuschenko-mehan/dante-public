@@ -40,6 +40,7 @@ struct TaskQueueInner {
     swarm: String,
     ant_port: u16,
     order: Vec<(String, String)>,
+    heart: Option<(String, Vec<Vec<u8>>)>,
 }
 
 /// Placeholder struct for ant tracking.
@@ -72,6 +73,9 @@ impl TaskQueue {
     /// Return number of pending tasks.
     /// Повернути кількість очікуючих завдань.
     pub fn set_swarm(&self, swarm: &str) { self.inner.lock().unwrap().swarm = swarm.to_string(); }
+    pub fn set_heart(&self, version: &str, bundle: &[u8], chunk_size: usize) {
+        self.inner.lock().unwrap().heart = Some((version.to_string(), crate::heart::chunks(bundle, chunk_size)));
+    }
     pub fn set_ant_port(&self, port: u16) { self.inner.lock().unwrap().ant_port = port; }
     pub fn snapshot_for(&self, coord_addr: &str) -> crate::heal::Snapshot {
         let inner = self.inner.lock().unwrap();
@@ -126,6 +130,7 @@ impl Server {
                 swarm: "dante".to_string(),
                 ant_port: 47901,
                 order: Vec::new(),
+                heart: None,
             })),
         };
         Ok(Server { listener, queue })
@@ -220,6 +225,19 @@ fn handle_connection(stream: TcpStream, queue: TaskQueue) -> io::Result<()> {
                             current_ant_id = Some(id.clone());
                         }
                         asks += 1;
+                        if snaps && asks >= 2 {
+                            let chunk = {
+                                let inner = queue.inner.lock().unwrap();
+                                inner.heart.as_ref().and_then(|(v, parts)| {
+                                    let i = (asks - 2) as usize;
+                                    parts.get(i).map(|c| CoordMessage::Heart { version: v.clone(), index: i as u32, total: parts.len() as u32, data: crate::protocol::hex_encode(c) })
+                                })
+                            };
+                            if let Some(msg) = chunk {
+                                let _ = writeln!(writer, "{}", msg.to_line());
+                                continue;
+                            }
+                        }
                         if snaps && asks % 20 == 1 {
                             let snap = crate::heal::encode(&queue.snapshot_for(&local));
                             let msg = CoordMessage::Snap { data: crate::protocol::hex_encode(&snap) };

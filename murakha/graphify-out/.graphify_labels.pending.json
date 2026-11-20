@@ -1,0 +1,20 @@
+{
+  "0": "duration",
+  "1": "ant.rs",
+  "2": "Class",
+  "3": "src/server.rs",
+  "4": "src/heal.rs",
+  "5": "src/discovery.rs",
+  "6": "heart_net.rs",
+  "7": "tests/life.rs",
+  "8": "CoordMessage",
+  "9": "tests/survive.rs",
+  "10": "replicate_ant.rs",
+  "11": "src/survive.rs",
+  "12": "BufReader",
+  "13": "tests/server.rs",
+  "14": "cli_heal.rs",
+  "15": "murakha",
+  "16": "src/mailbag.rs",
+  "17": "TcpStream"
+}

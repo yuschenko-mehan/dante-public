@@ -23,8 +23,9 @@ use murakha::serve;
 ///   --serve PORT [--swarm ID] [--tasks FILE] (новий режим)
 ///   Виводить інструкції та завершує роботу при помилці.
 fn print_usage_and_exit() -> ! {
-    eprintln!("Usage: murakha --coordinator HOST|auto [--swarm ID] [--once]");
-    eprintln!("       murakha --serve PORT [--swarm ID] [--tasks FILE]");
+    eprintln!("Usage: murakha --coordinator HOST|auto [--swarm ID] [--once] [--heal-dir DIR] [--silence SECONDS]");
+    eprintln!("       murakha --serve PORT [--swarm ID] [--tasks FILE] [--ant-port PORT] [--heart-dir DANTE_DIR]");
+    eprintln!("       murakha --restore-dante OUT_DIR --heal-dir DIR");
     eprintln!("Використання: murakha --coordinator HOST|auto [--swarm ID] [--once]");
     eprintln!("            murakha --serve PORT [--swarm ID] [--tasks FILE]");
     process::exit(1);
@@ -35,6 +36,25 @@ fn main() {
     // Збираємо аргументи, пропускаючи назву програми.
     let args: Vec<String> = env::args().skip(1).collect();
 
+    // Restore DANTE from the heart kept by this ant / Відновити Данте із серця, яке зберігає ця мураха
+    if let Some(pos) = args.iter().position(|a| a == "--restore-dante") {
+        let out = args.get(pos + 1).cloned().unwrap_or_else(|| print_usage_and_exit());
+        let dir = args.iter().position(|a| a == "--heal-dir").and_then(|i| args.get(i + 1)).cloned()
+            .unwrap_or_else(|| print_usage_and_exit());
+        let bundle = match murakha::survive::latest(&std::path::Path::new(&dir).join("heart")) {
+            Some(b) => b,
+            None => { eprintln!("No heart of DANTE here / Тут немає серця Данте: {}", dir); process::exit(1); }
+        };
+        match murakha::heart::unpack(&bundle, std::path::Path::new(&out)) {
+            Ok(n) => {
+                println!("DANTE restored: {} files in {} / Данте відновлено: {} файлів у {}", n, out, n, out);
+                println!("Next: add your keys (keys.txt), then run Dante.bat / Далі: впишіть ключі (keys.txt) і запустіть Dante.bat");
+                process::exit(0);
+            }
+            Err(e) => { eprintln!("Broken heart / Пошкоджене серце: {}", e); process::exit(1); }
+        }
+    }
+
     // Detect the new `--serve` mode early.
     // Виявити новий режим `--serve` на початку.
     if let Some(pos) = args.iter().position(|a| a == "--serve") {
@@ -44,6 +64,7 @@ fn main() {
         let mut swarm_id: Option<String> = None;
         let mut tasks_file: Option<String> = None;
         let mut ant_port: u16 = 47901;
+        let mut heart_dir: Option<String> = None;
 
         let mut i = pos + 1;
         while i < args.len() {
@@ -54,6 +75,10 @@ fn main() {
                         print_usage_and_exit();
                     }
                     swarm_id = Some(args[i + 1].clone());
+                    i += 2;
+                }
+                "--heart-dir" => {
+                    heart_dir = args.get(i + 1).cloned();
                     i += 2;
                 }
                 "--ant-port" => {
@@ -120,6 +145,19 @@ fn main() {
 
         serving.queue.set_swarm(&swarm);
         serving.queue.set_ant_port(ant_port);
+        if let Some(dir) = heart_dir {
+            // Pack the heart of DANTE for every ant (keys are never packed)
+            // Запакувати серце Данте для кожної мурахи (ключі ніколи не пакуються)
+            match murakha::heart::pack(std::path::Path::new(&dir)) {
+                Ok(bundle) => {
+                    let version = format!("{:016x}", murakha::survive::checksum(&bundle));
+                    let files = murakha::heart::list(&bundle).map(|l| l.len()).unwrap_or(0);
+                    serving.queue.set_heart(&version, &bundle, 256 * 1024);
+                    println!("Heart of DANTE: {} files, {} KB / Серце Данте: {} файлів, {} КБ", files, bundle.len() / 1024, files, bundle.len() / 1024);
+                }
+                Err(e) => eprintln!("Cannot pack the heart / Не вдалося запакувати серце: {}", e),
+            }
+        }
         // Print address and short progress.
         // Вивести адресу та короткий прогрес.
         println!("Server listening on {} / Сервер слухає на {}", serving.addr, serving.addr);
