@@ -71,6 +71,14 @@ Roles are chosen at installation (Install-DANTE.cmd), in Ukrainian or English. [
 - **Ant**: A light worker of the owner's swarm.
 - **Standalone DANTE**: Just the builder, without the swarm.
 
+## New on 23.11.2026
+- [WORKS] Academy lesson before every mission.
+- [WORKS] Vision 2: a local model (gemma3:4b, qwen2.5vl:3b via Ollama) describes pictures offline; the screen reader returns code, text or a physical description of objects from a screenshot of any window (covered by tests; live screen check is next).
+- [WORKS] Progress window: a thin always-on-top bar shows what DANTE is doing; never takes focus, folds away.
+- [WORKS] PC hardware: model, board, BIOS, CPU, RAM, GPU, disk; forecast of local models and parallel jobs; BIOS guide "power on after a blackout" for the board maker.
+- [WORKS] Daily capacity check of free AI models (requests and tokens where the service reports them).
+- [WORKS] Pult, watchdog and FreeLLMAPI start before anyone signs in to Windows.
+
 ## New on 20.11.2026
 - [WORKS] Installer `Install-DANTE.cmd`: language, role, Python and Git, desktop shortcut, autostart, keys from a flash drive.
 - [WORKS] Academy after two own mistakes: a model tries twice alone, then up to three other models give hints.

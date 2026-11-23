@@ -18,7 +18,9 @@ from dante import gui_logic as L
 from dante.i18n import LANGS, t
 
 # Windows PowerShell style; text/background contrast follows the «Contrast» slider (0 = darkest .. 100)
-from dante.theme import CAMPBELL, palette, step as _step, value_from_x, x_from_value  # noqa: E402
+from dante.theme import CAMPBELL, palette, palette_for, step as _step, value_from_x, x_from_value  # noqa: E402
+from dante import ui_theme  # noqa: E402
+UI_JSON = Path(__file__).resolve().parents[1] / "ui.json"
 
 ACCENT, ACCENT_HOVER, ACCENT_FG = CAMPBELL["cyan"], "#8ae6e6", "#000000"
 DANGER, DANGER_HOVER = "#c50f1f", "#a30d1a"
@@ -215,7 +217,8 @@ class DanteWindow:
         w, h = min(sw - 40, max(1180, int(sw * 0.66))), int(sh * 0.86)  # always fits the screen
         root.geometry(f"{w}x{h}+{max(0, (sw - w) // 2)}+10")
         root.minsize(min(820, sw - 20), min(520, sh - 60))
-        self.P = palette(self.state.contrast)
+        self.theme_mode = ui_theme.load_mode(UI_JSON)
+        self.P = palette_for(self.theme_mode, self.state.contrast)
         root.configure(bg=self.P["BG"])
         self.setup_fonts()
         self._style()
@@ -337,6 +340,8 @@ class DanteWindow:
         self.slider.draw()
         self.slider.c.pack(side="right", padx=(6, 2))
         ttk.Label(head, text=t(lg, "contrast")).pack(side="right")
+        # Day / Night / As in Windows / День / Ніч / Як у Windows
+        ttk.Button(head, text=ui_theme.mode_label(self.theme_mode, lg), command=self.cycle_theme).pack(side="right", padx=(0, 12))
 
         top = ttk.Frame(root, padding=(14, 8, 14, 6))
         top.pack(fill="x")
@@ -497,13 +502,23 @@ class DanteWindow:
         old_log = self.log.get("1.0", "end-1c")
         for w in self.root.winfo_children():
             w.destroy()
-        self.P = palette(self.state.contrast)
+        self.P = palette_for(self.theme_mode, self.state.contrast)
         self._style()
         self.build()
         self.log.insert("1.0", old_log + "\n")
         self.log.see("end")
         if note:
             self.say(note)
+
+    def cycle_theme(self) -> None:
+        """Day -> Night -> As in Windows; saved in ui.json. / День -> Ніч -> Як у Windows; зберігається в ui.json."""
+        modes = ui_theme.MODES
+        self.theme_mode = modes[(modes.index(self.theme_mode) + 1) % len(modes)] if self.theme_mode in modes else "night"
+        try:
+            ui_theme.save_mode(UI_JSON, self.theme_mode)
+        except Exception:
+            pass
+        self.rebuild(ui_theme.mode_label(self.theme_mode, self.lang))
 
     def change_language(self, _e=None) -> None:
         new = next((k for k, v in LANGS.items() if v == self.lang_box.get()), "uk")
@@ -531,7 +546,7 @@ class DanteWindow:
         if value == self.state.contrast:
             return
         self.state.contrast = value
-        self.P = palette(value)
+        self.P = palette_for(self.theme_mode, value)
         self._style()
         self.root.configure(bg=self.P["BG"])
         for w, roles in self._paint:

@@ -95,7 +95,11 @@ def _review(llm, task, ws, touched, audit, res) -> None:
             f = ws.resolve(p)
             if f.exists():
                 parts.append(f"=== {p} ===\n" + f.read_text(encoding="utf-8", errors="replace"))
-        resp = llm.complete(CRITIC_SYSTEM, C.critic_prompt(task, "\n".join(parts)[:8000]))
+        code = "\n".join(parts)
+        if len(code) > 24000:   # show the end of every file too: keep head and tail / показати і кінець файлу
+            code = code[:16000] + "\n... [middle skipped for length / середину пропущено] ...\n" + code[-8000:]
+        note = ("\nNOTE: the tests already PASS. Judge quality only; a skipped middle is a display limit, not missing code.\n")
+        resp = llm.complete(CRITIC_SYSTEM, C.critic_prompt(task + note, code))
         review = C.parse_critic(resp.content)
         res.critic_score, res.critic_issues = review["score"], review["issues"]
         audit.log("critic", score=res.critic_score, issues=res.critic_issues)
@@ -111,6 +115,18 @@ def teacher_prompt(task: str, code: str, error: str) -> str:
     """Prompt for a teacher model / Запит до моделі-вчителя."""
     return (f"TASK:\n{task[:1500]}\n\nCURRENT CODE:\n{code[:6000]}\n\nTEST OUTPUT (end):\n{error[-3000:]}\n\n"
             "Explain the root cause in 1-2 lines, then give one precise hint to fix it.")
+
+
+def lesson_prompt(task: str) -> str:
+    return ("Give a short LESSON for this coding mission before it starts: the approach, common pitfalls, "
+            "and what the tests will check. At most 10 lines.\n\nMISSION:\n" + task)
+
+
+def _lesson(teachers, task: str) -> str:
+    try:
+        return (teachers[0].complete(TEACHER_SYSTEM, lesson_prompt(task)).content or "").strip()[:1500]
+    except Exception:
+        return ""
 
 
 def _academy(teachers, task: str, code: str, error: str) -> list[str]:
@@ -183,6 +199,9 @@ def run_task(
     if lesson_ids:
         audit.log("lessons_used", ids=lesson_ids)
     first_failure = ""
+    lesson = _lesson(teachers, task) if teachers and settings.academy_briefing else ""
+    if lesson:
+        audit.log("academy_lesson", lesson=lesson)
 
     started = time.monotonic()
     for attempt in range(1, settings.max_fix_attempts + 1):
@@ -192,6 +211,8 @@ def run_task(
             return LoopResult(False, attempt - 1, touched, last_run,
                               f"Time limit {settings.task_time_limit_s}s reached", models, tokens[0], tokens[1])
         prompt = f"TASK:\n{task}\n\nTEST COMMAND (must pass): {test_command}\n"
+        if lesson:
+            prompt += f"\nACADEMY LESSON:\n{lesson}\n"
         if map_text:
             prompt += f"\n{map_text}\n"
         if read_only_files:

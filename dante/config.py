@@ -113,6 +113,7 @@ class Settings:
     # Own failed attempts before the Academy is asked (2 = after two mistakes, ask on the third).
     # Власних невдалих спроб до звернення в Академію (2 = після двох помилок, на третю — Академія).
     solo_attempts: int = 2
+    academy_briefing: bool = True
     command_timeout_s: int = 300
 
     # Money (see wallet.py). Paid models are never used unless allow_paid = true AND the

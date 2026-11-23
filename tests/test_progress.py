@@ -1,0 +1,73 @@
+"""Spec: PROGRESS window — the author sees that DANTE is alive and what it does now (jobs, attempts, code being written),
+in a small window that can be folded into a thin bar and never gets in the way.
+Специфікація: вікно ПРОГРЕСУ — автор бачить, що Данте живий і що робить зараз; маленьке вікно, згортається в тонку смужку."""
+import unittest
+
+from dante import progress as P
+
+LOG = """2026-11-23 10:27:51 DANTE pult: watching C:\\DANTE\\inbox, parallel 3
+2026-11-23 10:40:00 start [vision]: 149a1-screen-read.json
+2026-11-23 10:41:00 start [ollama]: 149b-pull-qwenvl.json
+2026-11-23 10:41:05 start [icon]: 148-boot-check.json
+2026-11-23 10:41:07 done / готово: 148-boot-check.json
+2026-11-23 10:44:00 done / готово: 149b-pull-qwenvl.json""".splitlines()
+
+
+class ParseTest(unittest.TestCase):
+    def test_running_and_done(self):
+        s = P.status_from_log(LOG, now="2026-11-23 10:45:00")
+        self.assertEqual([j.name for j in s.running], ["149a1-screen-read"])
+        self.assertEqual(s.running[0].lane, "vision")
+        self.assertEqual(s.running[0].seconds, 300)
+        self.assertEqual([j.name for j in s.recent], ["149b-pull-qwenvl", "148-boot-check"])
+        self.assertTrue(s.alive)
+
+    def test_quiet_log_means_idle_not_dead(self):
+        s = P.status_from_log(LOG[:1], now="2026-11-23 12:00:00")
+        self.assertEqual(s.running, [])
+        self.assertTrue(s.alive)
+
+    def test_empty_log_is_not_alive(self):
+        self.assertFalse(P.status_from_log([], now="2026-11-23 12:00:00").alive)
+
+    def test_pult_exit_line_does_not_kill_alive(self):
+        s = P.status_from_log(LOG + ["2026-11-23 10:44:30 another pult is already running — exiting"], now="2026-11-23 10:45:00")
+        self.assertTrue(s.alive)
+
+    def test_restart_forgets_jobs_started_before_it(self):
+        lines = ["2026-11-23 09:00:00 start [a]: 1-x.json", "2026-11-23 10:27:51 DANTE pult: watching C:\\DANTE\\inbox"]
+        self.assertEqual(P.status_from_log(lines, now="2026-11-23 10:30:00").running, [])
+
+
+class TextTest(unittest.TestCase):
+    def test_bar_text_uk_and_en(self):
+        s = P.status_from_log(LOG, now="2026-11-23 10:45:00")
+        self.assertEqual(P.bar_text(s, "uk"), "● Данте працює · завдань: 1 · 149a1-screen-read 5 хв")
+        self.assertEqual(P.bar_text(s, "en"), "● DANTE working · jobs: 1 · 149a1-screen-read 5 min")
+        idle = P.status_from_log(LOG[:1], now="2026-11-23 10:45:00")
+        self.assertEqual(P.bar_text(idle, "uk"), "● Данте чекає завдань")
+        self.assertEqual(P.bar_text(P.status_from_log([], now="x"), "uk"), "○ Данте не запущений")
+
+    def test_detail_lines(self):
+        s = P.status_from_log(LOG, now="2026-11-23 10:45:00")
+        lines = P.detail_lines(s, "uk")
+        self.assertIn("▶ 149a1-screen-read [vision] — 5 хв", lines)
+        self.assertIn("✓ 149b-pull-qwenvl", lines)
+
+    def test_minutes_format(self):
+        self.assertEqual(P.human_time(45, "uk"), "45 с")
+        self.assertEqual(P.human_time(300, "uk"), "5 хв")
+        self.assertEqual(P.human_time(3900, "uk"), "1 год 5 хв")
+        self.assertEqual(P.human_time(3900, "en"), "1 h 5 min")
+
+
+class ResultTest(unittest.TestCase):
+    def test_failed_jobs_are_marked_from_outbox_text(self):
+        s = P.status_from_log(LOG, now="2026-11-23 10:45:00",
+                              read_result=lambda name: "EXIT 1\nFAILED after 4" if name == "148-boot-check" else "EXIT 0")
+        lines = P.detail_lines(s, "uk")
+        self.assertIn("✗ 148-boot-check", lines)
+
+
+if __name__ == "__main__":
+    unittest.main()

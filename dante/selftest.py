@@ -104,6 +104,7 @@ def run_window_checks(show_seconds: float = 4.0) -> dict[str, bool]:
     w.change_language()
     pump(0.5)
     from dante.theme import contrast_ratio
+    w.theme_mode = "night"   # the contrast knob belongs to the night theme / крутилка контрасту — для нічної теми
     w.slider.set(0, now=True)
     pump(0.5)
     dark = (w.P["LOG_BG"], contrast_ratio(w.P["LOG_FG"], w.P["LOG_BG"]), w.log.cget("bg"))
