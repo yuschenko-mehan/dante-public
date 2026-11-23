@@ -610,14 +610,14 @@ class ProtectedContextFileTest(unittest.TestCase):
         from unittest import mock
         import dante.cli as cli
         answer = "=== FILE: app.py ===\nfrom lib import X\nY = X + 1\n=== END FILE ===\n"
-        fake = FakeLLM([answer])
+        fake = FakeLLM(["1. Write app.py", answer])   # the planner speaks first / спершу план
         with tempfile.TemporaryDirectory() as d, mock.patch.object(cli, "_make_llm", lambda s, t: fake):
             (Path(d) / "lib.py").write_text("X = 1\n", encoding="utf-8")
             code = main(["run", "--project", d, "--protect", "lib.py", "--file", "lib.py", "--audit-dir",
                          str(Path(d) / "audit"), "--task", "make app.py",
                          "--test", f'"{sys.executable}" -c "import app; assert app.Y == 2"'])
             self.assertEqual(code, 0)
-            self.assertIn("lib.py", fake.calls[0][1])  # it was shown to the model (read-only)
+            self.assertIn("lib.py", fake.calls[1][1])  # it was shown to the model (read-only)
 
 
 class SetupPlanTest(unittest.TestCase):

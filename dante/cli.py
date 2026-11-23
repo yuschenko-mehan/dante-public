@@ -17,7 +17,7 @@ from dante import __version__, version_line
 from dante.audit import AuditLog
 from dante.config import LESSONS_FILE, load_settings
 from dante.llm import FakeLLM, LLMError, OpenAICompatibleLLM, build_llm, list_models
-from dante.loop import run_task
+from dante.loop import run_mission, run_task
 from dante.workspace import Workspace
 
 _DEMO_TASK = "Create add.py with a function add(a, b) that returns a + b."
@@ -346,7 +346,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             except Exception:
                 pass
         teacher = teacher or None
-    result = run_task(task, test, ws, llm, s, audit, context_files=context, read_only_files=read_only,
+    result = run_mission(task, test, ws, llm, s, audit, context_files=context, read_only_files=read_only,
                       lessons_path=LESSONS_FILE, map_text=map_text, critic=use_critic, teacher=teacher)
 
     status = "SUCCESS" if result.success else "FAILED"

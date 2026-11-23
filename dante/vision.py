@@ -62,9 +62,14 @@ def _validate_and_read_image(image_path):
 def look(image, question, model=DEFAULT_MODEL, host='http://127.0.0.1:11434', post=_default_post, timeout=300):
     """Send an Ollama /api/chat request with an image and question.
     Надіслати запит до Ollama /api/chat із зображенням та запитанням."""
+    # Normalize model: use DEFAULT_MODEL if None, empty, or whitespace. / Нормалізація моделі: використовувати DEFAULT_MODEL, якщо None, порожньо або лише пробіли.
+    if not model or not str(model).strip():
+        model = DEFAULT_MODEL
+
     b64_image = _validate_and_read_image(image)
 
     url = f"{host.rstrip('/')}/api/chat"
+    # Payload dictionary is constructed here with "model": model / Тут створюється словник payload з "model": model
     payload = {
         "model": model,
         "stream": False,
@@ -126,3 +131,4 @@ def main(argv=None, post=_default_post, say=print):
     answer = look(image_path, question, model=model, post=post)
     say(answer)
     return 0
+

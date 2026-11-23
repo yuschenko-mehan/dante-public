@@ -407,6 +407,18 @@ def main(argv: list[str] | None = None) -> int:
         (base / "pult.pid").write_text(str(os.getpid()), encoding="utf-8")
     except OSError:
         pass
+    from dante import netwait
+    net_up = True
+    if os.environ.get("DANTE_NO_NETWAIT") != "1":   # after power-on the internet may come later / інтернет може з'явитися пізніше
+        net_up = netwait.wait_for_network(say=say, timeout=600)
+    # Network pulse: up -> every 30 min, down -> every minute / Пульс мережі: є -> раз на 30 хв, немає -> щохвилини
+    pulse = netwait.NetPulse(say=say, state=net_up, next_at=time.monotonic() + (1800 if net_up else 60),
+                             status_file=outbox / "net.status")
+    try:  # jobs cut by a blackout or crash go back to the queue once / перервані завдання — ще раз у чергу
+        from dante import resume
+        resume.resume_interrupted(inbox, outbox, say)
+    except Exception as e:
+        say("resume failed / повтор не вдався:", type(e).__name__, e)
     try:  # phone panel starts with the pult; failure only logged / панель стартує з пультом; збій лише в журнал
         from dante import panel
         _srv, _thr, _tok = panel.start(base)
@@ -420,6 +432,7 @@ def main(argv: list[str] | None = None) -> int:
         while True:
             try:
                 sched.tick()
+                pulse.tick()
             except OSError as e:  # e.g. a file locked for a moment / файл ненадовго зайнятий
                 say("retry:", e)
             except Exception as e:  # never stop the remote / пульт ніколи не зупиняється

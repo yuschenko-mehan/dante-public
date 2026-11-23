@@ -200,6 +200,13 @@ def run_task(
         audit.log("lessons_used", ids=lesson_ids)
     first_failure = ""
     lesson = _lesson(teachers, task) if teachers and settings.academy_briefing else ""
+    plan_text = ""
+    if settings.planner_always:
+        from dante import mission_plan as MP
+        mp = MP.get_or_make(ws.root, task, lambda q: llm.complete(TEACHER_SYSTEM, q).content)
+        if mp:
+            plan_text = MP.render(mp)
+            audit.log("mission_plan", steps=mp.steps)
     if lesson:
         audit.log("academy_lesson", lesson=lesson)
 
@@ -213,6 +220,8 @@ def run_task(
         prompt = f"TASK:\n{task}\n\nTEST COMMAND (must pass): {test_command}\n"
         if lesson:
             prompt += f"\nACADEMY LESSON:\n{lesson}\n"
+        if plan_text:
+            prompt += f"\n{plan_text}\n"
         if map_text:
             prompt += f"\n{map_text}\n"
         if read_only_files:
@@ -300,3 +309,67 @@ def run_task(
     return LoopResult(False, settings.max_fix_attempts, touched, last_run, "All attempts failed",
                       models, tokens[0], tokens[1])
 
+
+
+def run_mission(task, test_command, ws, llm, settings, audit, step_check=None, **kw):
+    """Planner always on: short plans go inline, long plans run STEP BY STEP; progress is saved, so after a restart
+    the mission continues from the first unfinished step.
+    Планувальник: короткий план — у запиті, довгий — покроково; прогрес зберігається і після перезапуску продовжується."""
+    import dataclasses
+    import sys as _sys
+    from dante import mission_plan as MP
+
+    # Pop critic flag from kwargs / Витягнути прапорець critic з аргументів
+    want_critic = bool(kw.pop('critic', False))
+
+    if not settings.planner_always:
+        res = run_task(task, test_command, ws, llm, settings, audit, critic=want_critic, **kw)
+        return res
+
+    plan = MP.get_or_make(ws.root, task, lambda q: llm.complete(TEACHER_SYSTEM, q).content)
+    if plan is None or len(plan.steps) <= settings.plan_inline_steps:
+        res = run_task(task, test_command, ws, llm, settings, audit, critic=want_critic, **kw)
+        return res
+
+    sub = dataclasses.replace(settings, planner_always=False)
+    # every step must at least compile (force: ignore cached .pyc) / кожен крок має хоча б компілюватися
+    check = step_check or (f'"{_sys.executable}" -c "import compileall,sys; '
+                           f'sys.exit(0 if compileall.compile_dir(\'.\', quiet=1, force=True) else 1)"')
+    result = None
+    collected_files = []
+
+    while plan.done < len(plan.steps):
+        last = plan.done == len(plan.steps) - 1
+        audit.log("mission_step", step=plan.done + 1, total=len(plan.steps))
+        
+        # Call run_task with critic=False / Викликати run_task з critic=False
+        result = run_task(MP.step_task(plan) + "\n\n" + MP.render(plan), test_command if last else check,
+                          ws, llm, sub, audit, critic=False, **kw)
+        
+        if not result.success:
+            return result
+
+        # Collect all files of all steps / Збрати всі файли всіх кроків
+        for f in result.files:
+            if f not in collected_files:
+                collected_files.append(f)
+        result.files = list(collected_files)
+
+        plan.done += 1
+        MP.save(ws.root, plan)
+
+        # After a successful step that is NOT the last, run the REAL test command / Після успішного кроку (не останнього) запустити справжні тести
+        if not last:
+            real_run = run_command(test_command, ws.root, settings.command_timeout_s)
+            if real_run.ok and not no_tests_ran(real_run.output):
+                audit.log('mission_early_done', step=plan.done, total=len(plan.steps))
+                plan.done = len(plan.steps)
+                MP.save(ws.root, plan)
+                break
+
+    if result and result.success:
+        result.files = list(collected_files)
+        if want_critic:
+            _review(llm, task, ws, result.files, audit, result)
+
+    return result

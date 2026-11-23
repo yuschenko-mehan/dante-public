@@ -12,6 +12,8 @@ from dante import progress
 ROOT = Path(__file__).resolve().parents[1]          # C:\DANTE\dante
 LOG_PATH = ROOT.parent / "outbox" / "pult.log"      # C:\DANTE\outbox\pult.log
 OUTBOX = LOG_PATH.parent
+HEARTBEAT = OUTBOX / "pult.heartbeat"
+AUDIT_DIR = ROOT / "audit"
 REFRESH_MS = 2000
 BAR_HEIGHT = 30
 WIDTH = 460
@@ -32,6 +34,29 @@ def _tail(path: Path, n: int = 400) -> list[str]:
         return path.read_text(encoding="utf-8", errors="replace").splitlines()[-n:]
     except OSError:
         return []
+
+
+def _read(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _audit_events(n: int = 300) -> list:
+    """Events of the newest DANTE audit log (the job working now). / Події найновішого журналу аудиту."""
+    import json
+    try:
+        newest = max(AUDIT_DIR.glob("*.jsonl"), key=lambda f: f.stat().st_mtime)
+    except (ValueError, OSError):
+        return []
+    out = []
+    for line in (_read(newest) or "").splitlines()[-n:]:
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            pass
+    return out
 
 
 def _result(name: str) -> str:
@@ -59,11 +84,13 @@ class ProgressWindow:
         self.dot.pack(side="left", padx=(8, 4), pady=8)
         self.text = tk.Label(bar, bg=COLORS["bg"], fg=COLORS["fg"], anchor="w", font=("Segoe UI", 10))
         self.text.pack(side="left", fill="x", expand=True)
+        self.pult = tk.Label(bar, bg=COLORS["bg"], fg=COLORS["muted"], font=("Segoe UI", 9))
+        self.pult.pack(side="right", padx=(4, 0))
         self.btn = tk.Label(bar, text="▸", bg=COLORS["bg"], fg=COLORS["muted"], font=("Segoe UI", 11), cursor="hand2")
         self.btn.pack(side="right", padx=8)
         self.details = tk.Label(root, bg=COLORS["bg"], fg=COLORS["muted"], justify="left", anchor="nw",
                                 font=("Consolas", 9), wraplength=WIDTH - 16)
-        for w in (bar, self.text, self.dot, self.btn):
+        for w in (bar, self.text, self.dot, self.btn, self.pult):
             w.bind("<Button-1>", lambda _e: self.toggle())
             w.bind("<Button-3>", self.menu)
         uk = self.lang == "uk"
@@ -99,6 +126,13 @@ class ProgressWindow:
         self.root.withdraw()
 
     def refresh(self) -> None:
+        try:
+            self._refresh()
+        except Exception as e:  # never freeze: show the problem and keep going / не застигати
+            self.text.configure(text=f"! {type(e).__name__}: {e}"[:80])
+        self.root.after(REFRESH_MS, self.refresh)
+
+    def _refresh(self) -> None:
         if self.hidden_until and time.time() >= self.hidden_until:
             self.hidden_until = 0.0
             self.root.deiconify()
@@ -108,11 +142,13 @@ class ProgressWindow:
         color = COLORS["grey"] if not s.alive else (COLORS["green"] if s.running else COLORS["amber"])
         self.dot.itemconfigure(self.dot_id, fill=color)
         self.text.configure(text=progress.bar_text(s, self.lang).lstrip("●○ "))
+        ptxt = progress.pult_text(_read(HEARTBEAT), now, self.lang)
+        self.pult.configure(text=ptxt.split(" (")[0], fg=COLORS["green"] if "●" in ptxt else COLORS["grey"])
         if self.open:
-            last = [ln[11:] for ln in lines[-8:]]
-            self.details.configure(text="\n".join(progress.detail_lines(s, self.lang) + ["—"] + last))
+            live = progress.live_lines(_audit_events(), self.lang) if s.running else []
+            last = [ln[11:] for ln in lines[-6:]]
+            self.details.configure(text="\n".join([ptxt] + live + ["—"] + progress.detail_lines(s, self.lang) + ["—"] + last))
             self.place()
-        self.root.after(REFRESH_MS, self.refresh)
 
 
 def main() -> None:

@@ -114,6 +114,11 @@ class Settings:
     # Власних невдалих спроб до звернення в Академію (2 = після двох помилок, на третю — Академія).
     solo_attempts: int = 2
     academy_briefing: bool = True
+    # Planner before every mission; None = on for real runs (load_settings), off for bare Settings() in tests.
+    # Планувальник перед кожною місією; None = увімкнено при звичайному запуску.
+    planner_always: bool | None = None
+    # Plans longer than this run STEP BY STEP (each step its own mini-mission). / Довші плани — покроково.
+    plan_inline_steps: int = 5
     command_timeout_s: int = 300
 
     # Money (see wallet.py). Paid models are never used unless allow_paid = true AND the
@@ -169,6 +174,9 @@ def with_hub(s: Settings, models_path: Path | None = None) -> Settings:
 def load_settings(path: Path | None = None, models_path: Path | None = None) -> Settings:
     """Load settings from a TOML file (missing file -> defaults; unknown keys -> error) plus models.json."""
     s = with_hub(_load_toml(path), models_path)
+    if s.planner_always is None:
+        import dataclasses
+        s = dataclasses.replace(s, planner_always=True)
     import os
     if os.environ.get("DANTE_NO_ROUTING") == "1":
         return s

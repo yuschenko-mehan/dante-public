@@ -71,9 +71,17 @@ Roles are chosen at installation (Install-DANTE.cmd), in Ukrainian or English. [
 - **Ant**: A light worker of the owner's swarm.
 - **Standalone DANTE**: Just the builder, without the swarm.
 
-## New on 23.11.2026
+## New on 23.11.2026 (0.4.2)
+- [WORKS] The Planner is always on: a plan from a few up to 200 steps, carried out step by step; models see the plan and the current step instead of the whole conversation; finished steps are saved in `.dante/mission.json`, so after a crash the work goes on from the right step.
+- [WORKS] The Planner does not split small jobs: a plan with the fewest steps; after every step DANTE runs the real tests and ends the mission early once they pass; the critic rates the mission once, at the end. This saves the free models' quota.
+- [WORKS] Network ping after power-on: the pult waits up to 10 minutes for the internet (1.1.1.1, 8.8.8.8, github.com), notes it in the log, then works offline. After that the network pulse is not constant: while the network is up it is checked once every 30 minutes, when it is down every minute until it is back; only changes go to the log.
+- [WORKS] Progress window: a separate pult indicator and two bars up to 100 % (current job and queue, approximate).
+- [WORKS] Only one watchdog can run (an OS file lock that is freed even after a blackout).
+- [FIXED] The screen reader sent an empty model name to the vision model (Ollama answered "400"); now the default model is used.
+
+## New on 23.11.2026 (0.4.1)
 - [WORKS] Academy lesson before every mission.
-- [WORKS] Vision 2: a local model (gemma3:4b, qwen2.5vl:3b via Ollama) describes pictures offline; the screen reader returns code, text or a physical description of objects from a screenshot of any window (covered by tests; live screen check is next).
+- [WORKS] Vision 2: a local model (gemma3:4b, qwen2.5vl:3b via Ollama) describes pictures offline; the screen reader returns code, text or a physical description of objects from a screenshot of any window (covered by tests and checked live: on 23.11 DANTE correctly read a Ukrainian window title and text from the screen in 45 s).
 - [WORKS] Progress window: a thin always-on-top bar shows what DANTE is doing; never takes focus, folds away.
 - [WORKS] PC hardware: model, board, BIOS, CPU, RAM, GPU, disk; forecast of local models and parallel jobs; BIOS guide "power on after a blackout" for the board maker.
 - [WORKS] Daily capacity check of free AI models (requests and tokens where the service reports them).
@@ -105,6 +113,8 @@ Here is a summary of the current state of DANTE's features:
 | Collector | [IN PROGRESS] |
 | Window and hotkeys | [WORKS] |
 | Remote control: Pult | [WORKS] |
+| Planner (up to 200 steps) | [WORKS] |
+| Network ping after power-on | [WORKS] |
 | Remote control: Phone panel v2 | [WORKS] |
 | GitHub integration | [WORKS] |
 | Updates | [WORKS] |

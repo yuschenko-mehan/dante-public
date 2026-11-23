@@ -13,6 +13,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from dante import single_instance
 from dante import watchdog_logic as W
 
 BASE = Path(__file__).resolve().parents[2]            # C:\DANTE
@@ -20,6 +21,7 @@ OUTBOX = BASE / "outbox"
 HEARTBEAT = OUTBOX / "pult.heartbeat"
 PID_FILE = BASE / "pult.pid"
 WD_PID = BASE / "watchdog.pid"
+WD_LOCK = BASE / "watchdog.lock"
 LOG = OUTBOX / "watchdog.log"
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -85,6 +87,11 @@ def restart_pult() -> None:
 
 
 def main() -> int:
+    # Only one watchdog: the pult and the boot task may both start one. / Лише один сторож.
+    lock = single_instance.acquire(WD_LOCK)
+    if lock is None:
+        log("another watchdog is already running - exiting / інший сторож уже працює - вихід")
+        return 0
     try:
         WD_PID.write_text(str(os.getpid()), encoding="utf-8")
     except OSError:

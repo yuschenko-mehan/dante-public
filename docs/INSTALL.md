@@ -27,6 +27,12 @@ Tip: `python -m dante setup` shows which models (including offline local ones) f
 - Check and install: `python -m dante update` (check), `python -m dante update install` (install), `python -m dante update rollback` (go back). A daily automatic check in the DANTE window comes in the next version.
 - Safety: updates come **only** from this repository, are verified by SHA-256, and never overwrite your keys, settings, models or lessons.
 
+## If the power goes out
+- **BIOS:** turn on "power on after AC power returns". On ASUS boards: press **Del** while the PC starts → **Advanced** → **APM Configuration** → **Restore AC Power Loss** → **Power On**, then **F10** (save). For other boards DANTE shows the path: `python -m dante.hardware`.
+- The pult, the watchdog and FreeLLMAPI start before anyone signs in to Windows (the Archant allows this once in the installer).
+- Internet may come later than the PC — the pult waits up to 10 minutes for the network and then works without it.
+- Unfinished jobs go back to the queue, and big missions continue from the plan step where they stopped.
+
 ## Murakha (work on several PCs)
 Download `murakha-<version>-windows-x64.zip` from Releases, unzip on every PC and read `ПРОЧИТАЙ.txt`. Allow **Private networks** in the Windows firewall prompt.
 

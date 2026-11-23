@@ -71,3 +71,41 @@ class ResultTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PultIndicatorTest(unittest.TestCase):
+    def test_fresh_heartbeat(self):
+        self.assertEqual(P.pult_text("2026-11-23 12:40:00", "2026-11-23 12:40:07", "uk"), "Пульт: ● працює (пульс 7 с тому)")
+        self.assertEqual(P.pult_text("2026-11-23 12:40:00", "2026-11-23 12:40:07", "en"), "Pult: ● running (pulse 7 s ago)")
+
+    def test_old_or_missing_heartbeat(self):
+        self.assertEqual(P.pult_text("2026-11-23 12:00:00", "2026-11-23 12:12:00", "uk"), "Пульт: ○ мовчить 12 хв")
+        self.assertEqual(P.pult_text(None, "2026-11-23 12:12:00", "uk"), "Пульт: ○ не запущений")
+        self.assertEqual(P.pult_text("garbage", "2026-11-23 12:12:00", "uk"), "Пульт: ○ не запущений")
+
+
+class LiveAuditTest(unittest.TestCase):
+    EV = [{"event": "task_start", "task": "Write calc.add"},
+          {"event": "academy_lesson", "lesson": "return the sum"},
+          {"event": "mission_plan", "steps": ["a", "b", "c"]},
+          {"event": "mission_step", "step": 2, "total": 3},
+          {"event": "llm_response", "attempt": 1, "model": "groq:gpt-oss"},
+          {"event": "files_written", "attempt": 1, "files": ["calc.py"]},
+          {"event": "test_run", "attempt": 1, "exit_code": 1, "output_tail": "FAILED (failures=2)"},
+          {"event": "llm_response", "attempt": 2, "model": "gemini:flash"}]
+
+    def test_live_lines(self):
+        lines = P.live_lines(self.EV, "uk")
+        self.assertEqual(lines[0], "Завдання: Write calc.add")
+        self.assertIn("План: 3 кроків · крок 2 з 3", lines)
+        self.assertIn("Урок Академії: є", lines)
+        self.assertIn("Спроба 2 · gemini:flash", lines)
+        self.assertIn("Файли: calc.py", lines)
+        self.assertIn("Тести: ✗ не пройшли (FAILED (failures=2))", lines)
+
+    def test_success_and_empty(self):
+        lines = P.live_lines(self.EV + [{"event": "test_run", "attempt": 2, "exit_code": 0, "output_tail": "OK"},
+                                        {"event": "task_success", "attempts": 2}], "uk")
+        self.assertIn("Тести: ✓ пройшли", lines)
+        self.assertIn("Готово ✓", lines)
+        self.assertEqual(P.live_lines([], "uk"), [])

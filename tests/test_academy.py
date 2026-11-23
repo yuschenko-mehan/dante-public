@@ -43,14 +43,14 @@ class Fake:
         return LLMResponse(a, "fake:m", 1, 1, 0.0)
 
 
-def go(t, main, teacher, attempts=3, solo=1, briefing=False):
+def go(t, main, teacher, attempts=3, solo=1, briefing=False, planner=False):
     p = Path(t) / "p"
     (p / "tests").mkdir(parents=True)
     (p / "tests" / "test_calc.py").write_text(
         "import unittest\nfrom calc import add\nclass T(unittest.TestCase):\n"
         "    def test(self):\n        self.assertEqual(add(2, 3), 5)\n", encoding="utf-8")
     return L.run_task("Write calc.add", f'"{sys.executable}" -m unittest discover -s tests', Workspace(p, ("tests",)),
-                      main, Settings(max_fix_attempts=attempts, solo_attempts=solo, academy_briefing=briefing), AuditLog(Path(t) / "audit"),
+                      main, Settings(max_fix_attempts=attempts, solo_attempts=solo, academy_briefing=briefing, planner_always=planner), AuditLog(Path(t) / "audit"),
                       read_only_files=["tests/test_calc.py"], teacher=teacher)
 
 

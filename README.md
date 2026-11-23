@@ -1,6 +1,6 @@
 # DANTE — a free AI program builder for Windows
 
-[Українська версія](README.uk.md) · Version 0.4.1 · [Download (Releases)](https://github.com/yuschenko-mehan/dante-public/releases)
+[Українська версія](README.uk.md) · Version 0.4.2 · [Download (Releases)](https://github.com/yuschenko-mehan/dante-public/releases)
 
 DANTE (Dynamic Autonomous Neural Tool for Engineering) is a Windows program that writes, tests and fixes code from your description. It runs on **free** AI models (cloud and local, on your own PC) and is made for people who are not programmers: you say what you need, DANTE does the work, and the tests show whether it is done.
 
@@ -21,9 +21,11 @@ Every feature below is marked honestly: **[WORKS]** — checked on a real PC; **
 - **Daily watch for new models** [WORKS]. DANTE compares model lists and proposes what is worth adding; it never adds keys by itself.
 - **AI capacity check** [WORKS]. Daily: which free models answer and how many requests and tokens are left (where the service reports it).
 - **PC hardware** [WORKS]. DANTE detects the PC model, motherboard, BIOS, CPU, RAM, graphics card and disk, predicts which local models fit and how many jobs to run at once, and gives a BIOS guide for "power on after a blackout" for the board maker.
-- **Progress window** [WORKS]. A thin always-on-top bar shows what DANTE is doing now; click for details; it never takes the focus.
+- **Planner** [WORKS]. Always on: DANTE first makes a plan (from a few up to 200 steps, as many as the task needs) and then carries it out step by step. Models see only the plan and the current step, not the whole conversation, so they work faster. Finished steps are saved: after a crash or a blackout the work goes on from the step where it stopped.
+- **Progress window** [WORKS]. A thin always-on-top bar shows what DANTE is doing now, a separate pult indicator (working / idle / silent) and two bars up to 100 % — the current job and the whole queue (approximate). Click for details; it never takes the focus; right-click to hide.
+- **After the PC powers on** [WORKS]. The pult, the watchdog and FreeLLMAPI start before anyone signs in. Internet often comes later than the PC, so the pult checks ("pings") the network for up to 10 minutes and then starts working without it; after that it checks the network every 30 minutes (every minute while it is down). The watchdog restarts the pult if it hangs, and only one watchdog ever runs.
 - **Team work** [IN PROGRESS]. Parts of a big task are done in parallel by groups of three different free models.
-- **Vision 2** [WORKS]. A local model on your graphics card describes pictures offline. The screen reader takes a screenshot of any window and returns code (as files), text or a physical description of objects — material, size, forces, motion, risks [covered by tests, live screen check is next].
+- **Vision 2** [WORKS]. A local model on your graphics card describes pictures offline. The screen reader takes a screenshot of any window and returns code (as files), text or a physical description of objects — material, size, forces, motion, risks [covered by tests and checked live on screen].
 - **Window** [WORKS]. Ukrainian and English, big buttons, a red STOP, hotkeys, a contrast knob, a drafting font. Day / Night / As in Windows themes [IN PROGRESS].
 
 Every part in detail: [docs/FEATURES.md](docs/FEATURES.md).
@@ -82,6 +84,7 @@ DANTE works with free cloud models (Gemini, Groq, OpenRouter, GLM and others), l
 | Installer, roles, keys on a USB drive, new-model watch | [WORKS] |
 | Murakha (Rust) in a local network | [WORKS] |
 | Vision 2, PC hardware, progress window, capacity check | [WORKS] |
+| Planner up to 200 steps, network ping, watchdog | [WORKS] |
 | Writer, relay, team work, Day / Night themes | [IN PROGRESS] |
 | Knyaz over the internet, Archant "crown" | [IN PROGRESS] |
 | Voice, webcam, Arduino, 3D | [PLANNED] |
