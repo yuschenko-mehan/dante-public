@@ -138,3 +138,15 @@ To run DANTE, you need:
 - **Hardware**: A standard PC is sufficient. The author's PC (i5-11400F, 16 GB RAM, GeForce GT 1030) is enough to run the tool effectively.
 
 For more information, visit the repository: https://github.com/yuschenko-mehan/dante-public
+
+## New in 0.4.3 (25.11.2026)
+
+- **AI control rules** [WORKS]. Any AI with access to the `C:\DANTE` folder gives jobs through the pult: one JSON file per job, its own name prefix, one owner per lane, at most 7200 seconds per job, results in `outbox`. Full rules and a minimal example: [AI-CONTROL.md](AI-CONTROL.md).
+- **Relay of teams** [WORKS]. Each team writes its own part on top of the previous ones; a critic from another team passes it only at 10 of 10 with bilingual notes; the team fixes its own part (up to 4 tries). Used for the 19-module drafting and CAD course; standards are the ones in force in Ukraine (DSTU).
+- **DSTU drawings** [WORKS]. `eskd_sheet.py` (ezdxf): sheets A4–A0, a layer system, the form 1 title block with Ukrainian labels, dimensions with correct texts, ANSI31 hatching, a parts list, and the drafting italic (own LibreCAD fonts made by slanting OpenGOST letters 15°). The A0, hatching and parts-list part was written by DANTE itself (11 tests).
+- **Writer in separate windows** [IN PROGRESS]. Every chat opens in its own Chrome window with focus emulation, so background chats keep answering; text goes in through CDP `Input.insertText`, sending uses Enter and then several click methods. Live: ChatGPT 11/11 files, DeepSeek 10/11; Qwen is being fixed.
+- **Mail cleaning** [WORKS]. In DANTE's own Chrome window (CDP, the author's mouse is never used): ads are found, two model teams vote, a sender counts as an ad only if both agree, and the result is reviewed by the controller. Everything goes to the Trash only; mails with files and protected senders are kept, and anything removed by mistake is returned from the Trash. DANTE's eye checks every page, and its answers are compared with the page text (`eye-benchmark.jsonl`).
+- **Power-loss recovery** [WORKS]. Windows autologin, then the scheduled pult, watchdog and FreeLLMAPI, the network wait and pulse, and resumed jobs. Checked live after real blackouts on 24–25.11.
+- **Drop any file** [WORKS]. `dropzone.py` accepts files dragged from Explorer onto the main window or the progress bar (plain ctypes, works even when DANTE runs as administrator); `tools/intake/file_intake.py` reads text and code (UTF-8 or Windows-1251), CSV, JSON, DOCX, XLSX (all sheets), PPTX (slides in order), PDF (with pypdf), images (size, plus a description by DANTE's eye), DXF (entities and texts), ZIP (file list), audio and video (with ffprobe), and anything else as binary. Free models write a short analysis per file; originals go to `drop\done`, nothing is deleted. The drop handling was written by DANTE itself; the reader is the controller's reference (DANTE's attempt failed the tests).
+- **Writer: Qwen fix** [IN PROGRESS]. Qwen's code editor shows spaces as non-breaking spaces, so the file markers were not recognised; answers are now normalised. Very long Qwen files are still cut by the editor and need another fix.
+

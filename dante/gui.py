@@ -861,7 +861,14 @@ def main() -> int:
     if "--keep-console" not in sys.argv:
         _hide_console()
     try:
-        DanteWindow().root.mainloop()
+        win = DanteWindow()
+        try:  # drag files straight into the window, like into a chat / перетягувати файли прямо у вікно, як у чат
+            from dante import dropzone
+            from tkinter import messagebox
+            dropzone.enable(win.root, on_status=lambda m: messagebox.showinfo("DANTE", m, parent=win.root))
+        except Exception:
+            pass
+        win.root.mainloop()
     except Exception:  # the console may be hidden: keep the error in a file
         import traceback
         (L.DANTE_ROOT / "gui-error.txt").write_text(traceback.format_exc(), encoding="utf-8")

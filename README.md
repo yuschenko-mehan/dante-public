@@ -1,6 +1,6 @@
 # DANTE — a free AI program builder for Windows
 
-[Українська версія](README.uk.md) · Version 0.4.2 · [Download (Releases)](https://github.com/yuschenko-mehan/dante-public/releases)
+[Українська версія](README.uk.md) · Version 0.4.3 · [Download (Releases)](https://github.com/yuschenko-mehan/dante-public/releases)
 
 DANTE (Dynamic Autonomous Neural Tool for Engineering) is a Windows program that writes, tests and fixes code from your description. It runs on **free** AI models (cloud and local, on your own PC) and is made for people who are not programmers: you say what you need, DANTE does the work, and the tests show whether it is done.
 
@@ -16,7 +16,7 @@ Every feature below is marked honestly: **[WORKS]** — checked on a real PC; **
 - **Learning from mistakes** [WORKS]. DANTE writes lessons to `lessons.json` and uses them in later tasks.
 - **Architect** [WORKS]. Splits a big idea into small steps; you approve the plan, every step is saved in Git and can be undone.
 - **Reader** [WORKS]. Takes code from AI chat pages in a separate Chrome profile — exactly, with indentation — and puts it into files, so generated code never has to be retyped.
-- **Writer** [IN PROGRESS]. DANTE types a task into web AI chats (ChatGPT, Gemini, Qwen, DeepSeek, Mistral), waits for the answer and takes the code; a "relay" asks several chats at once and keeps the answer whose code passes the tests.
+- **Writer** [IN PROGRESS]. DANTE types a task into web AI chats (ChatGPT, Gemini, Qwen, DeepSeek, Mistral), waits for the answer and takes the code; a "relay" asks several chats at once and keeps the answer whose code passes the tests. Live check 25.11: ChatGPT 11 of 11 files, DeepSeek 10 of 11; every chat works in its own window without touching your mouse; Qwen is still being fixed.
 - **Pult and phone panel** [WORKS]. Jobs go through a "pult" folder; you can watch and control DANTE from a phone in your home network (with an access code).
 - **Daily watch for new models** [WORKS]. DANTE compares model lists and proposes what is worth adding; it never adds keys by itself.
 - **AI capacity check** [WORKS]. Daily: which free models answer and how many requests and tokens are left (where the service reports it).
@@ -27,6 +27,12 @@ Every feature below is marked honestly: **[WORKS]** — checked on a real PC; **
 - **Team work** [IN PROGRESS]. Parts of a big task are done in parallel by groups of three different free models.
 - **Vision 2** [WORKS]. A local model on your graphics card describes pictures offline. The screen reader takes a screenshot of any window and returns code (as files), text or a physical description of objects — material, size, forces, motion, risks [covered by tests and checked live on screen].
 - **Window** [WORKS]. Ukrainian and English, big buttons, a red STOP, hotkeys, a contrast knob, a drafting font. Day / Night / As in Windows themes [IN PROGRESS].
+- **Any AI can control DANTE** [WORKS]. Claude, ChatGPT, Qwen or a local agent give jobs through the pult folder by simple rules that stop them from getting in each other's way: [docs/AI-CONTROL.md](docs/AI-CONTROL.md).
+- **Relay of teams** [WORKS]. Teams of free models do not compete: each writes its own next part, and a critic from another team passes a part only at 10 of 10, always with notes in two languages. Used for the drafting course (19 modules).
+- **Drawings to Ukrainian standards (DSTU)** [WORKS]. DXF sheets A4–A0 with layers, a title block (form 1), hatching, a parts list and the drafting italic font; they open in LibreCAD, FreeCAD and AutoCAD.
+- **Mail cleaning** [WORKS]. In its own Chrome window, without your mouse, DANTE finds advertising, two teams of models decide what is an ad, and everything goes only to the Trash (it can be restored for 30 days). Mails with files and the ones you protect are never touched.
+- **Drop any file into DANTE** [WORKS]. Drag files or folders onto the DANTE window or the progress bar (or right-click → Send to → DANTE): DANTE reads text, code, Word, Excel, PowerPoint, PDF, pictures (with its eye), DXF drawings and archives, and writes a short analysis for each file in `C:\DANTE\drop\out`.
+- **Survives power loss** [WORKS]. Windows signs in by itself, then the pult, the watchdog and the free model gateway start, and interrupted jobs continue.
 
 Every part in detail: [docs/FEATURES.md](docs/FEATURES.md).
 
@@ -85,6 +91,7 @@ DANTE works with free cloud models (Gemini, Groq, OpenRouter, GLM and others), l
 | Murakha (Rust) in a local network | [WORKS] |
 | Vision 2, PC hardware, progress window, capacity check | [WORKS] |
 | Planner up to 200 steps, network ping, watchdog | [WORKS] |
+| AI control rules, team relay, DSTU drawings, mail cleaning, power-loss recovery | [WORKS] |
 | Writer, relay, team work, Day / Night themes | [IN PROGRESS] |
 | Knyaz over the internet, Archant "crown" | [IN PROGRESS] |
 | Voice, webcam, Arduino, 3D | [PLANNED] |

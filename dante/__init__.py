@@ -5,8 +5,8 @@ AI code builder: many free models + local model + external agents, plan → code
 
 NAME = "DANTE"
 FULL_NAME = "Dynamic Autonomous Neural Tool for Engineering"
-__version__ = "0.4.2"
-__build__ = "2026.11.23.2"  # date of the build + number of the build that day
+__version__ = "0.4.3"
+__build__ = "2026.11.25.1"  # date of the build + number of the build that day
 
 
 def version_line() -> str:

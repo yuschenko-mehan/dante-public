@@ -3,6 +3,7 @@ It never takes the keyboard focus, so it does not disturb your work.
 Вікно прогресу Данте: тонка смужка поверх вікон у правому нижньому куті; клік — розгорнути. Фокус не забирає."""
 from __future__ import annotations
 
+import json
 import time
 import tkinter as tk
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 from dante import progress
 
 ROOT = Path(__file__).resolve().parents[1]          # C:\DANTE\dante
+POS_FILE = ROOT / "progress-pos.json"               # C:\DANTE\progress-pos.json
 LOG_PATH = ROOT.parent / "outbox" / "pult.log"      # C:\DANTE\outbox\pult.log
 OUTBOX = LOG_PATH.parent
 HEARTBEAT = OUTBOX / "pult.heartbeat"
@@ -17,7 +19,40 @@ AUDIT_DIR = ROOT / "audit"
 REFRESH_MS = 2000
 BAR_HEIGHT = 30
 WIDTH = 460
+DETAIL_LINES = 14
+DRAG_MIN = 4
 COLORS = {"bg": "#1b1f24", "fg": "#e2e5ea", "muted": "#a9b4bf", "green": "#3fb950", "amber": "#d29922", "grey": "#6e7681"}
+
+
+def clamp_pos(x: int, y: int, w: int, h: int, sw: int, sh: int) -> tuple[int, int]:
+    """Keep the window fully on screen. / Тримати вікно повністю на екрані."""
+    x = max(0, min(x, sw - w))
+    y = max(0, min(y, sh - h))
+    return x, y
+
+
+def load_pos(path: Path | None = None) -> tuple[int, int] | None:
+    """Load the saved window position, or None if broken/missing. / Завантажити збережену позицію вікна."""
+    p = path or POS_FILE
+    try:
+        if not p.exists():
+            return None
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and "x" in data and "y" in data:
+            return int(data["x"]), int(data["y"])
+    except Exception:
+        pass
+    return None
+
+
+def save_pos(x: int, y: int, path: Path | None = None) -> None:
+    """Save the window position to JSON. / Зберегти позицію вікна у JSON."""
+    p = path or POS_FILE
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"x": x, "y": y}), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _lang() -> str:
@@ -45,7 +80,6 @@ def _read(path: Path) -> str | None:
 
 def _audit_events(n: int = 300) -> list:
     """Events of the newest DANTE audit log (the job working now). / Події найновішого журналу аудиту."""
-    import json
     try:
         newest = max(AUDIT_DIR.glob("*.jsonl"), key=lambda f: f.stat().st_mtime)
     except (ValueError, OSError):
@@ -70,6 +104,12 @@ class ProgressWindow:
     def __init__(self, root: tk.Tk) -> None:
         self.root, self.open, self.hidden_until = root, False, 0.0
         self.lang = _lang()
+        self.drag_start_x = 0
+        self.drag_start_y = 0
+        self.win_start_x = 0
+        self.win_start_y = 0
+        self.dragging = False
+        
         root.overrideredirect(True)                  # no title bar, no taskbar button / без заголовка
         root.attributes("-topmost", True)
         try:
@@ -77,6 +117,7 @@ class ProgressWindow:
         except tk.TclError:
             pass
         root.configure(bg=COLORS["bg"])
+        
         bar = tk.Frame(root, bg=COLORS["bg"], height=BAR_HEIGHT)
         bar.pack(fill="x")
         self.dot = tk.Canvas(bar, width=14, height=14, bg=COLORS["bg"], highlightthickness=0)
@@ -88,25 +129,97 @@ class ProgressWindow:
         self.pult.pack(side="right", padx=(4, 0))
         self.btn = tk.Label(bar, text="▸", bg=COLORS["bg"], fg=COLORS["muted"], font=("Segoe UI", 11), cursor="hand2")
         self.btn.pack(side="right", padx=8)
-        self.details = tk.Label(root, bg=COLORS["bg"], fg=COLORS["muted"], justify="left", anchor="nw",
-                                font=("Consolas", 9), wraplength=WIDTH - 16)
+        
+        # Details text widget instead of label / Текстовий віджет подробиць замість мітки
+        self.details = tk.Text(root, bg=COLORS["bg"], fg=COLORS["muted"], font=("Consolas", 9),
+                               height=DETAIL_LINES, width=55, bd=0, highlightthickness=0, wrap="word")
+        
         for w in (bar, self.text, self.dot, self.btn, self.pult):
-            w.bind("<Button-1>", lambda _e: self.toggle())
+            w.bind("<ButtonPress-1>", self.on_press)
+            w.bind("<B1-Motion>", self.on_motion)
+            w.bind("<ButtonRelease-1>", self.on_release)
             w.bind("<Button-3>", self.menu)
+            
+        # Bind mouse wheel on text widget for scrolling / Прив'язка коліщатка миші на тексті для прокрутки
+        self.details.bind("<MouseWheel>", self.on_mouse_wheel)
+        self.details.bind("<Button-3>", self.menu)
+
         uk = self.lang == "uk"
         self.m = tk.Menu(root, tearoff=0)
+        self.m.add_command(label="Повернути в кут" if uk else "Back to the corner", command=self.back_to_corner)
         self.m.add_command(label="Сховати на годину" if uk else "Hide for 1 hour", command=self.hide_hour)
         self.m.add_command(label="Закрити" if uk else "Close", command=root.destroy)
+        
         self.place()
         self.refresh()
 
+    def on_press(self, e) -> None:
+        """Handle mouse press on bar / Обробка натискання миші на смузі."""
+        self.drag_start_x = e.x_root
+        self.drag_start_y = e.y_root
+        self.win_start_x = self.root.winfo_x()
+        self.win_start_y = self.root.winfo_y()
+        self.dragging = False
+
+    def on_motion(self, e) -> None:
+        """Handle mouse drag / Обробка перетягування миші."""
+        dx = e.x_root - self.drag_start_x
+        dy = e.y_root - self.drag_start_y
+        if not self.dragging and (abs(dx) > DRAG_MIN or abs(dy) > DRAG_MIN):
+            self.dragging = True
+        if self.dragging:
+            nx = self.win_start_x + dx
+            ny = self.win_start_y + dy
+            w = self.root.winfo_width()
+            h = self.root.winfo_height()
+            sw = self.root.winfo_screenwidth()
+            sh = self.root.winfo_screenheight()
+            nx, ny = clamp_pos(nx, ny, w, h, sw, sh)
+            self.root.geometry(f"+{nx}+{ny}")
+
+    def on_release(self, e) -> None:
+        """Handle mouse release / Обробка відпускання миші."""
+        if not self.dragging:
+            self.toggle()
+        else:
+            save_pos(self.root.winfo_x(), self.root.winfo_y())
+        self.dragging = False
+
+    def on_mouse_wheel(self, e) -> None:
+        """Scroll details text with mouse wheel / Прокручування детального тексту коліщатком миші."""
+        if e.delta:
+            self.details.yview_scroll(int(-1 * (e.delta / 120)), "units")
+        elif e.num == 4:
+            self.details.yview_scroll(-1, "units")
+        elif e.num == 5:
+            self.details.yview_scroll(1, "units")
+
     def place(self) -> None:
-        """Bottom-right corner above the taskbar / правий нижній кут над панеллю задач."""
+        """Position the window using saved pos or bottom-right corner / Розмістити вікно за збереженою позицією або в кутку."""
         self.root.update_idletasks()
+        w = WIDTH
         h = BAR_HEIGHT + (self.details.winfo_reqheight() if self.open else 0)
-        x = self.root.winfo_screenwidth() - WIDTH - 12
-        y = self.root.winfo_screenheight() - h - 56
-        self.root.geometry(f"{WIDTH}x{h}+{x}+{y}")
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        
+        pos = load_pos()
+        if pos is not None:
+            x, y = clamp_pos(pos[0], pos[1], w, h, sw, sh)
+        else:
+            x = sw - w - 12
+            y = sh - h - 56
+            x, y = clamp_pos(x, y, w, h, sw, sh)
+            
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
+
+    def back_to_corner(self) -> None:
+        """Forget saved position and return to corner / Забути збережену позицію і повернутися в кут."""
+        try:
+            if POS_FILE.exists():
+                POS_FILE.unlink()
+        except Exception:
+            pass
+        self.place()
 
     def toggle(self) -> None:
         """Fold / unfold the details / згорнути або розгорнути подробиці."""
@@ -145,15 +258,32 @@ class ProgressWindow:
         ptxt = progress.pult_text(_read(HEARTBEAT), now, self.lang)
         self.pult.configure(text=ptxt.split(" (")[0], fg=COLORS["green"] if "●" in ptxt else COLORS["grey"])
         if self.open:
+            # Check if user is currently at the bottom of the text widget / Перевірка, чи користувач на самому низу тексту
+            at_bottom = self.details.yview()[1] >= 0.99
+            
             live = progress.live_lines(_audit_events(), self.lang) if s.running else []
-            last = [ln[11:] for ln in lines[-6:]]
-            self.details.configure(text="\n".join([ptxt] + live + ["—"] + progress.detail_lines(s, self.lang) + ["—"] + last))
+            last = [ln[11:] for ln in lines[-40:]]
+            text_content = "\n".join([ptxt] + live + ["—"] + progress.detail_lines(s, self.lang) + ["—"] + last)
+            
+            self.details.configure(state="normal")
+            self.details.delete("1.0", tk.END)
+            self.details.insert("1.0", text_content)
+            self.details.configure(state="disabled")
+            
+            if at_bottom:
+                self.details.see(tk.END)
+                
             self.place()
 
 
 def main() -> None:
     root = tk.Tk()
-    ProgressWindow(root)
+    pw = ProgressWindow(root)
+    try:  # drag files straight onto the bar / перетягувати файли прямо на смужку
+        from dante import dropzone
+        dropzone.enable(root, on_status=lambda m: pw.text.configure(text=m))
+    except Exception:
+        pass
     root.mainloop()
 
 

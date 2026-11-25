@@ -19,6 +19,9 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Dict, List, Optional
 
+# Maximum allowed request body size (1 MB) / Максимально дозволений розмір тіла запиту (1 МБ)
+MAX_BODY = 1_000_000
+
 # ----------------------------------------------------------------------
 # Token utilities
 # ----------------------------------------------------------------------
@@ -299,18 +302,40 @@ def make_handler(base: Path, token: str, project: str):
             self.end_headers()
             self.wfile.write(encoded)
 
+        def _send_zero_length_response(self, status: HTTPStatus) -> None:
+            """Send a response with Content-Length: 0. / Надіслати відповідь із Content-Length: 0."""
+            self.send_response(status)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         def do_POST(self):
-            if not self._check_token():
-                self.send_response(HTTPStatus.UNAUTHORIZED)
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+            except (TypeError, ValueError):
+                content_length = 0
+
+            if content_length > MAX_BODY:
+                self.send_response(HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+                self.send_header("Content-Length", "0")
+                self.send_header("Connection", "close")
                 self.end_headers()
+                self.close_connection = True
+                return
+
+            try:
+                body = self.rfile.read(content_length) if content_length > 0 else b""
+            except Exception:
+                body = b""
+
+            if not self._check_token():
+                self._send_zero_length_response(HTTPStatus.UNAUTHORIZED)
                 return
 
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path == "/toggle":
                 name = (urllib.parse.parse_qs(parsed.query).get("name") or [""])[0]
                 if name not in ("critic", "contest"):
-                    self.send_response(HTTPStatus.BAD_REQUEST)
-                    self.end_headers()
+                    self._send_zero_length_response(HTTPStatus.BAD_REQUEST)
                     return
                 from dante import gui_logic as _G
                 f = base / "dante" / f"{name}.json"
@@ -320,19 +345,16 @@ def make_handler(base: Path, token: str, project: str):
                     _G.set_contest(not _G.contest_enabled(f), f)
                 self.send_response(HTTPStatus.SEE_OTHER)
                 self.send_header("Location", f"/?t={urllib.parse.quote(token)}")
+                self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
             if parsed.path != "/task":
-                self.send_response(HTTPStatus.NOT_FOUND)
-                self.end_headers()
+                self._send_zero_length_response(HTTPStatus.NOT_FOUND)
                 return
 
-            content_length = int(self.headers.get("Content-Length", "0"))
-            body = self.rfile.read(content_length) if content_length > 0 else b""
             task = parse_task(body)
             if task is None:
-                self.send_response(HTTPStatus.BAD_REQUEST)
-                self.end_headers()
+                self._send_zero_length_response(HTTPStatus.BAD_REQUEST)
                 return
 
             # Prepare job file name
@@ -345,6 +367,7 @@ def make_handler(base: Path, token: str, project: str):
             # Redirect back to status page
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header("Location", f"/?t={urllib.parse.quote(token)}")
+            self.send_header("Content-Length", "0")
             self.end_headers()
 
     return DanteHandler
